@@ -7,3 +7,12 @@ edition = "2018"
 
 [dependencies]
 ext = { path = "../sseq/ext" }
+algebra = { path = "../sseq/ext/crates/algebra", default-features = false, features = ["json"] }
+bivec = { path = "../sseq/ext/crates/bivec"}
+error = { path = "../sseq/ext/crates/error"}
+fp = { path = "../sseq/ext/crates/fp", default-features = false }
+once = { path = "../sseq/ext/crates/once"}
+query = { path = "../sseq/ext/crates/query" }
+saveload = { path = "../sseq/ext/crates/saveload" }
+thread-token = { path = "../sseq/ext/crates/thread-token", optional = true }
+
