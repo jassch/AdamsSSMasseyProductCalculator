@@ -30,10 +30,10 @@ fn main() -> error::Result {
     //let res_arc = Arc::new(res);
     let max_s=30;
     let max_t=60;
-    let mult_max_s=10;
-    let mult_max_t=20;
-    let mult_with_max_s=10;
-    let mult_with_max_t=20;
+    let mult_max_s=15;
+    let mult_max_t=30;
+    let mult_with_max_s=15;
+    let mult_with_max_t=30;
 
     let save_file: File = File::create(save_path)?;
 
