@@ -31,7 +31,9 @@ fn main() -> error::Result {
     let max_s=30;
     let max_t=60;
     let mult_max_s=10;
-    let mult_max_t=10;
+    let mult_max_t=20;
+    let mult_with_max_s=10;
+    let mult_with_max_t=20;
 
     let save_file: File = File::create(save_path)?;
 
@@ -72,6 +74,7 @@ fn main() -> error::Result {
             for (idx,g) in gens.iter().enumerate() {
                 // get the hom for the corresponding
                 // generator
+                // lift map dual to g, F_i -> FF_2
                 let hom = 
                     ResolutionHomomorphism::new(
                         format!("mult-by-{}",g),
@@ -92,17 +95,74 @@ fn main() -> error::Result {
                 hom.extend_step(i, j, Some(&matrix));
                 // give it the first map
 
+                let domain_max_s = min(i+mult_with_max_s,max_s);
+                let domain_max_t = min(j+mult_with_max_t,max_t);
                 // extend hom            
+                #[cfg(not(feature = "concurrent"))]
+                hom.extend(
+                    domain_max_s, 
+                    domain_max_t
+                );
+
+                #[cfg(feature = "concurrent")]
+                hom.extend_concurrent(
+                    domain_max_s, 
+                    domain_max_t, 
+                    &bucket);
+                /*
                 #[cfg(not(feature = "concurrent"))]
                 hom.extend_all();
 
                 #[cfg(feature = "concurrent")]
                 hom.extend_all_concurrent(&bucket);
+                */
 
                 // now read off products
-                // products are given by figuring
-                // out where the multiplication
-                // map 
+                // product of g with g' is
+                // given by composing the lift of the ext class
+                // dual to g with the ext class dual to 
+                // g'
+                // and reading off 
+                // for now, let's just print based on the lift_hom code
+
+                /*
+                println!("hom mult-by-{} of degree ({},{}): ", g, hom.shift_s, hom.shift_t);
+
+                for (s, n, t) in hom.target.iter_stem() {
+                    if s + i >= hom.source.next_homological_degree() 
+                        || t + j > hom.source.module(s+i).max_computed_degree()
+                        || s + i > domain_max_s
+                        || t + j > domain_max_t 
+                    {
+                        
+                        continue; // out of range for computed stuff
+                    }
+                    let matrix = hom.get_map(s+i).hom_k(t);
+                    for (i2, r) in matrix.iter().enumerate() {
+                        println!("mult-by-{}(x_({}, {}, {})) = {:?}", g, n, s, i2, r);
+                    }
+                }
+                */
+
+                // ok let's do the proper multiplications
+                for i2 in 0..mult_with_max_s {
+                    let module2 = res.module(i2); // ith free module
+                    for j2 in 0..mult_with_max_t {
+                        if res.number_of_gens_in_bidegree(i+i2,j+j2)==0 {
+                            continue;
+                        }
+                        let gens2 = &module2.gen_names()[j2];
+                        let matrix = hom.get_map(i+i2).hom_k(j2);
+                        for (idx2,g2) in gens2.iter().enumerate() {
+                            print!("{} in ({},{}) * {} in ({},{}) = ", g, i, j, g2, i2, j2);
+                            if matrix[idx2].len() == 0  {
+                                println!("0 (trivial)");
+                            } else {
+                                println!("{:?} in ({},{})", matrix[idx2], i+i2, j+j2);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
