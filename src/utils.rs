@@ -1,12 +1,12 @@
 
 use fp::prime::ValidPrime;
-use fp::matrix::Matrix;
+//use fp::matrix::Matrix;
 use fp::matrix::Subspace;
 use fp::vector::FpVector;
 
 
 /// converts a vector in subspace coordinates to global coordinates
-pub fn subspaceToGlobal(subspace: &Subspace, vec: &FpVector) -> FpVector {
+pub fn subspace_to_global(subspace: &Subspace, vec: &FpVector) -> FpVector {
     let mut result = FpVector::new(subspace.prime(),subspace.ambient_dimension());
     subspace.apply(result.as_slice_mut(), 1, vec.as_slice());
     result
@@ -62,7 +62,7 @@ impl Iterator for AllVectorsIterator {
                 return None;
             }
         }
-        return Some(subspaceToGlobal(&self.subspace,&self.current));
+        return Some(subspace_to_global(&self.subspace,&self.current));
     }
 }
 
