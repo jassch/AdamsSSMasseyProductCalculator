@@ -260,12 +260,12 @@ impl AdamsMultiplication {
 
                     // ok let's do the proper multiplications
                     for i2 in 0..mult_with_max_s {
-                        let module2 = res.module(i2); // ith free module
+                        //let module2 = res.module(i2); // ith free module
                         for j2 in 0..mult_with_max_t {
                             if res.number_of_gens_in_bidegree(i+i2,j+j2)==0 {
                                 continue; // nothing in codomain, multiplication is trivially 0
                             }
-                            let gens2 = &module2.gen_names()[j2];
+                            //let gens2 = &module2.gen_names()[j2];
                             let matrix = hom.get_map(i+i2).hom_k(j2);
 
                             // convert to fp::matrix::Matrix and store
@@ -412,10 +412,40 @@ impl AdamsMultiplication {
                     continue; // no nonzero vectors
                 }
                 for v1 in AllVectorsIterator::new_whole_space(p, dim1) {
+                    if v1.is_zero() { // no need to consider the 0 vector
+                        continue;
+                    }
+                    // might go out of bounds if max_mass_s, max_mass_t > 0.5 max_s, max_t
+                    // TODO
                     for s2 in 1..max_mass_s {
                         for t2 in s2 as i32..max_mass_t {
-                            let lmul_v1 = self.left_multiplication_by((s1, t1), &v1, (s2, t2));
-                            
+                            let (s3, t3) = (s1+s2, t1+t2);
+                            let dim2 = match self.num_gens(s2, t2) {
+                                Some(n) => n,
+                                None => { continue; } // not computed. this shouldn't happen
+                            };
+                            let dim3 = match self.num_gens(s3, t3) {
+                                Some(n) => n,
+                                None => { continue; } // not computed. this shouldn't happen
+                            };
+                            if dim2 == 0 {
+                                continue; // no nonzero vectors
+                            }
+                            let lmul_v1 = match self.left_multiplication_by((s1, t1), &v1, (s2, t2)) {
+                                Some(m) => m,
+                                None => {
+                                    continue;
+                                }
+                            };
+                            let (aug_start, mut lmul_v1_aug) = Matrix::augmented_from_vec(p, &lmul_v1.to_vec());
+                            lmul_v1_aug.row_reduce();
+                            let kernel_lmul_v1 = lmul_v1_aug.compute_kernel(aug_start);
+                            for v2 in AllVectorsIterator::new(&kernel_lmul_v1) {
+                                if v2.is_zero() {
+                                    continue;
+                                }
+                                println!("({},{},{})*({},{},{}) = ({},{},{})", s1, t1, v1, s2, t2, v2, s3, t3, format!("0_{}", dim3));
+                            }
                         }
                     }
                 }
@@ -441,8 +471,9 @@ fn main() -> error::Result {
     fp::vector::initialize_limb_bit_index_table(adams_mult.resolution().prime());
 
     adams_mult.compute_multiplications(mult_max_s, mult_max_t, mult_with_max_s, mult_with_max_t);
-    //adams_mult.brute_force_compute_all_massey_products((7,30));
+    adams_mult.brute_force_compute_all_massey_products((7,30));
 
+    /*
     println!("Iterate over whole F_2^5");
     for fp_vec in AllVectorsIterator::new_whole_space(adams_mult.prime(), 5) {
         println!("fp_vec: {}", fp_vec);
@@ -463,7 +494,7 @@ fn main() -> error::Result {
     for fp_vec in AllVectorsIterator::new(&subspace) {
         println!("fp_vec: {}", fp_vec);
     }
-
+    */
 
 
     //adams_mult.possible_nontrivial_massey_products();
@@ -473,6 +504,7 @@ fn main() -> error::Result {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn old_main() -> error::Result {
     let save_path = Path::new("S_2_resolution.data");
     //let mut res_opt: Result<Resolution<CCC>,Error> = error::from_string("could not construct module");
