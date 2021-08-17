@@ -15,6 +15,7 @@ use ext::utils::construct;
 use fp::prime::ValidPrime;
 use fp::matrix::Matrix;
 use fp::matrix::Subspace;
+use fp::vector::FpVector;
 use saveload::Save;
 
 pub mod utils;
@@ -219,12 +220,16 @@ impl AdamsMultiplication {
                             j  // t
                         );
                     // matrix defining the first hom
+                    let ngens = module.number_of_gens_in_degree(j);
                     let mut matrix = Matrix::new(
                         res.prime(),
-                        module.number_of_gens_in_degree(j),
+                        ngens,
                         1
                     );
-                    matrix[0].set_entry(idx,1);
+                    //assert_eq!(matrix.rows(), ngens);
+                    //assert_eq!(matrix.columns(), 1);
+                    
+                    matrix[idx].set_entry(0,1);
                     // should send the generator to 1
                     // and everything else to 0
                     hom.extend_step(i, j, Some(&matrix));
@@ -350,10 +355,53 @@ impl AdamsMultiplication {
         println!("Max elt triples: {}", max_triples);
     }
 
+    pub fn left_multiplication_by(self: &Self, l: Bidegree, vec: &FpVector, r: Bidegree) -> Option<Matrix> {
+        let p = self.prime();
+        let (ls, lt) = l;
+        let (rs, rt) = r;
+        let (gs, gt) = (ls + rs, lt + rt);
+        self.num_gens_bidegree(l).and_then(|dim_l| -> Option<Matrix> {
+            assert_eq!(dim_l, vec.len()); // vec has to have same length as number of gens in bidegree l
+
+            self.num_gens_bidegree(r).and_then(|dim_r| -> Option<Matrix> {
+                self.num_gens(gs, gt).and_then(|dim_g| -> Option<Matrix> {
+                    let mut result = Matrix::new(p, dim_r, dim_g);
+                    if (dim_l==0) || (dim_r==0) || (dim_g==0) {
+                        return Some(result);
+                    } else {
+                        for ix in 0..dim_l {
+                            let coeff = vec.entry(ix);
+                            if coeff == 0 {
+                                continue;
+                            }
+                            let matrix = match self.multiplication_matrices.get(&(ls, lt, ix)) {
+                                Some(hm) => {
+                                    match hm.get(&r) {
+                                        Some(m) => m,
+                                        None => {
+                                            return None;
+                                        }
+                                    }
+                                },
+                                None => {
+                                    return None; // couldn't find an important multiplication matrix
+                                }
+                            };
+                            result += /* coeff* */ matrix; // coeff is 1 though, so we're good
+                        }
+                        Some(result)
+                    }
+                })
+            })
+        })
+    }
+
     /// compute all massey products of massey-productable triples (a,b,c)  
     /// all of whose bidegrees are less than max_massey
     pub fn brute_force_compute_all_massey_products(self: &Self, max_massey: Bidegree) {
+        let p = self.prime();
         let (max_mass_s, max_mass_t) = max_massey;
+        // first identify kernels of left multiplication in this range
         for s1 in 1..max_mass_s {
             for t1 in s1 as i32..max_mass_t {
                 let dim1 = match self.num_gens(s1, t1) {
@@ -363,8 +411,13 @@ impl AdamsMultiplication {
                 if dim1 == 0 {
                     continue; // no nonzero vectors
                 }
-                for v1 in Subspace::entire_space(self.prime(), dim1).iter() {
-
+                for v1 in AllVectorsIterator::new_whole_space(p, dim1) {
+                    for s2 in 1..max_mass_s {
+                        for t2 in s2 as i32..max_mass_t {
+                            let lmul_v1 = self.left_multiplication_by((s1, t1), &v1, (s2, t2));
+                            
+                        }
+                    }
                 }
             }
         }
@@ -387,12 +440,31 @@ fn main() -> error::Result {
 
     fp::vector::initialize_limb_bit_index_table(adams_mult.resolution().prime());
 
-    adams_mult.compute_all_multiplications();
+    adams_mult.compute_multiplications(mult_max_s, mult_max_t, mult_with_max_s, mult_with_max_t);
     //adams_mult.brute_force_compute_all_massey_products((7,30));
 
+    println!("Iterate over whole F_2^5");
     for fp_vec in AllVectorsIterator::new_whole_space(adams_mult.prime(), 5) {
         println!("fp_vec: {}", fp_vec);
     }
+
+    let p = adams_mult.prime();
+    let input = [ vec![1, 0, 0, 1, 1]
+                , vec![0, 1, 0, 1, 0]
+                , vec![0, 0, 1, 0, 1]
+                ];
+    let mut m = Matrix::from_vec(p, &input);
+    m.row_reduce();
+    let subspace = Subspace {
+        matrix: m
+    };
+
+    println!("Iterate over subspace");
+    for fp_vec in AllVectorsIterator::new(&subspace) {
+        println!("fp_vec: {}", fp_vec);
+    }
+
+
 
     //adams_mult.possible_nontrivial_massey_products();
 
