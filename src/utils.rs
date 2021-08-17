@@ -4,6 +4,15 @@ use fp::matrix::Matrix;
 use fp::matrix::Subspace;
 use fp::vector::FpVector;
 
+
+/// converts a vector in subspace coordinates to global coordinates
+pub fn subspaceToGlobal(subspace: &Subspace, vec: &FpVector) -> FpVector {
+    let mut result = FpVector::new(subspace.prime(),subspace.ambient_dimension());
+    subspace.apply(result.as_slice_mut(), 1, vec.as_slice());
+    result
+}
+
+
 #[derive(Clone, Debug)]
 pub struct AllVectorsIterator {
     subspace: Subspace,
@@ -37,22 +46,23 @@ impl Iterator for AllVectorsIterator {
     fn next(&mut self) -> Option<Self::Item> {
         if self.initial {
             self.initial=false;
-            return Some(self.current.clone());
-        }
-        for ix in 0..self.subspace.dimension() {
-            if self.current.entry(ix) != *self.subspace.prime()-1  {
-                self.current.set_entry(ix,self.current.entry(ix)+1);
-            } else {
-                self.current.set_entry(ix,0);
+        } else {
+            for ix in 0..self.subspace.dimension() {
+                if self.current.entry(ix) != *self.subspace.prime()-1  {
+                    self.current.set_entry(ix,self.current.entry(ix)+1);
+                    break;
+                } else {
+                    self.current.set_entry(ix,0);
+                }
+            }
+            // advance current
+            if self.current == self.start {
+                // resets
+                self.initial=true;
+                return None;
             }
         }
-        // advance current
-        if self.current == self.start {
-            // resets
-            self.initial=true;
-            return None;
-        }
-        return Some(self.current.clone());
+        return Some(subspaceToGlobal(&self.subspace,&self.current));
     }
 }
 
