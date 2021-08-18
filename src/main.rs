@@ -14,7 +14,7 @@ use ext::resolution::Resolution;
 use ext::utils::construct;
 use fp::prime::ValidPrime;
 use fp::matrix::Matrix;
-use fp::matrix::Subspace;
+//use fp::matrix::Subspace;
 use fp::vector::FpVector;
 use saveload::Save;
 
