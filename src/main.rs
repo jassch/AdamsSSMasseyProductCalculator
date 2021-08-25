@@ -1,20 +1,22 @@
 
 use std::cmp::min;
+use std::io::Write;
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 use std::clone::Clone;
 use std::collections::hash_map::HashMap;
-use algebra::module::{Module};
+use algebra::module::homomorphism::ModuleHomomorphism;
+use algebra::module::{FDModule, Module};
 //use error::Error;
-use ext::chain_complex::{ChainComplex, FreeChainComplex};
+use ext::chain_complex::{ChainComplex, FreeChainComplex, ChainHomotopy};
 use ext::CCC;
 use ext::resolution_homomorphism::ResolutionHomomorphism;
 use ext::resolution::Resolution;
 use ext::utils::construct;
 use fp::prime::ValidPrime;
 use fp::matrix::Matrix;
-//use fp::matrix::Subspace;
+use fp::matrix::Subspace;
 use fp::vector::FpVector;
 use saveload::Save;
 
@@ -49,6 +51,8 @@ use utils::AllVectorsIterator;
  */
 type Bidegree = (u32, i32);
 type AdamsGenerator = (u32, i32, usize);
+type AdamsElement = (u32,i32,FpVector);
+
 //#[derive(Clone)]
 pub struct AdamsMultiplication {
     /// the resolution object
@@ -161,6 +165,22 @@ impl AdamsMultiplication {
         } else {
             return (s1+s2 < self.max_s) && (t1 + t2 < self.max_t)
         }
+    }
+    pub fn adams_elt_to_resoln_hom(self: &Self, e: &AdamsElement) -> ResolutionHomomorphism<Resolution<CCC>,Resolution<CCC>> {
+        let (s,t,v) = e;
+        let hom = ResolutionHomomorphism::new(
+            format!("({},{},{})", s, t, v),
+            self.resolution(),
+            self.resolution(),
+            *s,
+            *t
+        );
+        let mut matrix = Matrix::new(v.prime(), v.len(), 1);
+        for idx in 0..v.len() {
+            matrix[idx].set_entry(0,v.entry(idx));
+        }
+        hom.extend_step(*s, *t, Some(&matrix));
+        hom
     }
 
     /// is the bilinear map Adams(deg1) x Adams(deg2) -> Adams(deg1+deg2)
@@ -396,12 +416,150 @@ impl AdamsMultiplication {
         })
     }
 
+    pub fn right_multiplication_by(self: &Self, r: Bidegree, vec: &FpVector, l: Bidegree) -> Option<Matrix> {
+        // TODO right now I'm assuming that the multiplication in the Adams Spectral Sequence is commutative
+        // so we can return
+        self.left_multiplication_by(r, vec, l)
+        // Check this assumption
+    }
+
+    /// Indeterminacy of massey product only depends on the bidegree of the middle term.
+    pub fn compute_indeterminacy_of_massey_product(self: &Self, a: &AdamsElement, b: Bidegree, c: &AdamsElement) -> Result<Subspace, String> {
+        let (s1, t1, v1) = a;
+        let (s2, t2) = b;
+        let (s3, t3, v3) = c;
+        let (s_left, t_left) = (s1 + s2 -1, t1+t2);
+        let (s_right, t_right) = (s2 + s3 -1, t2+t3);
+        let (s_tot, t_tot) = (s1 + s2 + s3 - 1, t1 + t2 + t3);
+        let p = self.prime();
+
+        let left_dim = match self.num_gens(s_left, t_left) {
+            Some(n) => n,
+            None => { 
+                return Err(format!("Couldn't get dimension of ({}, {})", s_left, t_left));
+            }
+        };
+        let right_dim = match self.num_gens(s_right, t_right) {
+            Some(n) => n,
+            None => { 
+                return Err(format!("Couldn't get dimension of ({}, {})", s_right, t_right));
+            }
+        };
+        let total_dim = match self.num_gens(s_tot, t_tot) {
+            Some(n) => n,
+            None => { 
+                return Err(format!("Couldn't get dimension of ({}, {})", s_tot, t_tot));
+            }
+        };
+
+        if left_dim == 0 && right_dim == 0 {
+            return Ok(Subspace::empty_space(p, total_dim));
+        }
+
+        if left_dim == 0 {
+            // just compute left multiplication
+            
+            // from (s_right, t_right) -> (s_tot, t_tot)
+            let left_indet = match self.left_multiplication_by((*s1,*t1), v1, (s_right, t_right)) {
+                Some(lmat) => lmat,
+                None => { 
+                    return Err(
+                        format!(
+                            "Couldn't compute the left multiplication ({}, {}, {})* : ({}, {}) -> ({}, {})", 
+                            s1, t1, v1,
+                            s_right, t_right,
+                            s_tot, t_tot
+                        )); 
+                }
+            };
+                
+            let (l_aug_start, mut l_indet_aug) = Matrix::augmented_from_vec(p, &left_indet.to_vec());
+            l_indet_aug.row_reduce();
+                
+            return Ok(l_indet_aug.compute_image(left_indet.columns(), l_aug_start));
+        }
+        
+        if right_dim == 0 {
+            // just compute left multiplication
+            
+            // from (s_right, t_right) -> (s_tot, t_tot)
+            let right_indet = match self.right_multiplication_by((*s3,*t3), v3, (s_left, t_left)) {
+                Some(rmat) => rmat,
+                None => { 
+                    return Err(
+                        format!(
+                            "Couldn't compute the right multiplication *({}, {}, {}) : ({}, {}) -> ({}, {})", 
+                            s3, t3, v3,
+                            s_left, t_left,
+                            s_tot, t_tot
+                        )); 
+                }
+            };
+                
+            let (r_aug_start, mut r_indet_aug) = Matrix::augmented_from_vec(p, &right_indet.to_vec());
+            r_indet_aug.row_reduce();
+                
+            return Ok(r_indet_aug.compute_image(right_indet.columns(), r_aug_start));
+        }
+
+        // from (s_right, t_right) -> (s_tot, t_tot)
+        let left_indet = match self.left_multiplication_by((*s1,*t1), v1, (s_right, t_right)) {
+            Some(lmat) => lmat,
+            None => { 
+                return Err(
+                    format!(
+                        "Couldn't compute the left multiplication ({}, {}, {})* : ({}, {}) -> ({}, {})", 
+                        s1, t1, v1,
+                        s_right, t_right,
+                        s_tot, t_tot
+                    )); 
+            }
+        };
+        let right_indet = match self.right_multiplication_by((*s3, *t3), v3, (s_left, t_left)) {
+            Some(rmat) => rmat,
+            None => { 
+                return Err(
+                    format!(
+                        "Couldn't compute the right multiplication *({}, {}, {}) : ({}, {}) -> ({}, {})", 
+                        s3, t3, v3,
+                        s_left, t_left,
+                        s_tot, t_tot
+                    )); 
+            }
+        };
+        
+        let (l_aug_start, mut l_indet_aug) = Matrix::augmented_from_vec(p, &left_indet.to_vec());
+        l_indet_aug.row_reduce();
+        let (r_aug_start, mut r_indet_aug) = Matrix::augmented_from_vec(p, &right_indet.to_vec());
+        r_indet_aug.row_reduce();
+        
+        let l_ind_subsp = l_indet_aug.compute_image(left_indet.columns(), l_aug_start);
+        let r_ind_subsp = r_indet_aug.compute_image(right_indet.columns(), r_aug_start);
+        let mut indet = Subspace::new(p, l_ind_subsp.dimension() + r_ind_subsp.dimension(), l_ind_subsp.ambient_dimension());
+        indet.add_vectors(
+            l_ind_subsp
+                .iter()
+                .take(l_ind_subsp.dimension())
+                .cloned()
+                .chain(
+                    r_ind_subsp
+                    .iter()
+                    .take(r_ind_subsp.dimension())
+                    .cloned()));
+        Ok(indet)
+    }
+
     /// compute all massey products of massey-productable triples (a,b,c)  
     /// all of whose bidegrees are less than max_massey
     pub fn brute_force_compute_all_massey_products(self: &Self, max_massey: Bidegree) {
+        let mut zero_massey_output = match File::create("zero-massey-prods.txt") {
+            Err(error) => { eprintln!("Could not open 'zero-massey-prods.txt' for writing: {}", error); return; }
+            Ok(file) => file
+        };
         let p = self.prime();
         let (max_mass_s, max_mass_t) = max_massey;
         // first identify kernels of left multiplication in this range
+        let mut kernels: HashMap<(Bidegree,Bidegree), HashMap<FpVector,Subspace>> = HashMap::new();
         for s1 in 1..max_mass_s {
             for t1 in s1 as i32..max_mass_t {
                 let dim1 = match self.num_gens(s1, t1) {
@@ -424,7 +582,7 @@ impl AdamsMultiplication {
                                 Some(n) => n,
                                 None => { continue; } // not computed. this shouldn't happen
                             };
-                            let dim3 = match self.num_gens(s3, t3) {
+                            let _dim3 = match self.num_gens(s3, t3) {
                                 Some(n) => n,
                                 None => { continue; } // not computed. this shouldn't happen
                             };
@@ -440,17 +598,184 @@ impl AdamsMultiplication {
                             let (aug_start, mut lmul_v1_aug) = Matrix::augmented_from_vec(p, &lmul_v1.to_vec());
                             lmul_v1_aug.row_reduce();
                             let kernel_lmul_v1 = lmul_v1_aug.compute_kernel(aug_start);
+                            if kernel_lmul_v1.dimension() == 0 {
+                                // kernel trival
+                                continue; // skip
+                            }
+                            let bidegree_pair = ((s1,t1),(s2,t2));
+                            match kernels.get_mut(&bidegree_pair) {
+                                Some(hm) => {
+                                    hm.insert(v1.clone(),kernel_lmul_v1.clone());
+                                },
+                                None => {
+                                    let mut new_hm = HashMap::new();
+                                    new_hm.insert(v1.clone(), kernel_lmul_v1.clone());
+                                    kernels.insert(bidegree_pair, new_hm);
+                                }
+                            }
+                            /*
                             for v2 in AllVectorsIterator::new(&kernel_lmul_v1) {
                                 if v2.is_zero() {
                                     continue;
                                 }
                                 println!("({},{},{})*({},{},{}) = ({},{},{})", s1, t1, v1, s2, t2, v2, s3, t3, format!("0_{}", dim3));
                             }
+                            */
                         }
                     }
                 }
             }
         }
+        // stores interesting (no element zero, and lands in nontrivial degree for now) massey-productable triples
+        let mut triples: Vec<(AdamsElement, AdamsElement, AdamsElement)> = Vec::new();
+        for s1 in 1..max_mass_s {
+            for t1 in s1 as i32..max_mass_t {
+                let deg1 = (s1, t1);
+                for s2 in 1..max_mass_s {
+                    for t2 in s2 as i32..max_mass_t {
+                        let deg2 = (s2, t2);
+                        let bideg_pr_l = (deg1, deg2);
+                        let hm_kers = match kernels.get(&bideg_pr_l) {
+                            Some(hm_kers) => {
+                                hm_kers
+                            },
+                            None => { continue; } // no interesting vectors/kernels in this bidegree pair
+                        };
+                        for (v1, ker_v1) in hm_kers.iter() {
+                            for v2 in AllVectorsIterator::new(&ker_v1) {
+                                if v2.is_zero() {
+                                    continue; // skip the zero vector
+                                }
+                                // now iterate over s3, t3
+                                for s3 in 1..max_mass_s {
+                                    for t3 in s3 as i32..max_mass_t {
+                                        let deg3 = (s3, t3);
+                                        let bideg_pr_r = (deg2, deg3);
+                                        let final_bideg = (s1+s2+s3-1, t1+t2+t3);
+                                        match self.num_gens_bidegree(final_bideg) {
+                                            Some(n) => {
+                                                // computed bidegree
+                                                if n==0 { // but dimension 0, no interesting massey products
+                                                    continue;
+                                                }
+                                            },
+                                            None => {
+                                                // uncomputed bidegree, skip
+                                                continue;
+                                            }
+                                        }
+                                        let hm_kers_2 = match kernels.get(&bideg_pr_r) {
+                                            Some(hm_kers_2) => { hm_kers_2 },
+                                            None => { continue; } // no interesting vectors/kernels in this 
+                                            // bidegree pair
+                                        };
+                                        let ker_v2 = match hm_kers_2.get(&v2) {
+                                            Some(ker_v2) => { ker_v2 },
+                                            None => { continue; } // v2 doesn't have an interesting kernel here
+                                        };
+                                        for v3 in AllVectorsIterator::new(&ker_v2) {
+                                            if v3.is_zero() {
+                                                continue;
+                                            }
+                                            triples.push(((s1,t1,v1.clone()), (s2,t2,v2.clone()), (s3, t3, v3.clone())));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for (ae1, ae2, ae3) in &triples {
+            let (s1,t1,v1) = ae1;
+            let (s2,t2,v2) = ae2;
+            let (s3,t3,v3) = ae3;
+            let (shift_s,shift_t) = (s1+s2-1, t1+t2);
+            let shift_n = shift_t-shift_s as i32;
+            let (tot_s, tot_t) = (shift_s+s3, shift_t+t3);
+            let tot_n = tot_t-tot_s as i32;
+            let target_dim = match self.num_gens(tot_s, tot_t) {
+                Some(n) => n,
+                None => { continue; }
+            };
+
+            let res_hom_2 = self.adams_elt_to_resoln_hom(&ae2);
+            res_hom_2.extend_through_stem(shift_s, shift_n);
+            let res_hom_3 = self.adams_elt_to_resoln_hom(&ae3);
+            res_hom_3.extend_through_stem(tot_s, tot_n);
+
+            let homotopy = ChainHomotopy::new(
+                &*self.resolution,
+                &*self.resolution,
+                s2+s3,
+                t2+t3,
+                |source_s, source_t, idx, row| {
+                    let mid_s = source_s - s3;
+
+                    res_hom_3.get_map(source_s)
+                        .compose(res_hom_2.get_map(mid_s))
+                        .apply_to_basis_element(row.as_slice_mut(), 1, source_t, idx);
+                }
+            );
+
+            homotopy.extend(tot_s, tot_t);
+            let last = homotopy.homotopy(tot_s);
+            let mut answer = vec![0; target_dim];
+            let mut nonzero = false;
+            for i in 0..target_dim {
+                let output = last.output(tot_t, i);
+                for (k, entry) in v1.iter().enumerate() {
+                    if entry != 0 {
+                        answer[i] += entry * output.entry(k); // TODO: might need an offset here
+
+                    }
+                }
+                if answer[i]!=0 { 
+                    nonzero=true;
+                }
+            }
+            //for 
+            
+            if nonzero {
+                let massey_rep = FpVector::from_slice(v1.prime(), &answer);
+                let indet = match self.compute_indeterminacy_of_massey_product(ae1, (*s2, *t2), ae3) {
+                    Ok(subsp) => subsp,
+                    Err(reason) => {
+                        println!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
+                            s1, t1, v1, 
+                            s2, t2, v2, 
+                            s3, t3, v3,
+                            tot_s, tot_t, massey_rep,
+                            format!("{} could not compute indeterminacy because {}", "{??}", reason)
+                            );
+                        // hopefully this doesn't happen
+                        continue; // printed out, keep on going
+                    }
+                };
+                print!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
+                    s1, t1, v1, 
+                    s2, t2, v2, 
+                    s3, t3, v3,
+                    tot_s, tot_t, massey_rep,
+                    indet
+                );
+                if indet.contains(massey_rep.as_slice()) {
+                    println!(" = 0 ")
+                } else {
+                    println!("");
+                }
+            } else {
+                writeln!(zero_massey_output, "< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = 0 + did not compute indeterminacy", 
+                    s1, t1, v1, 
+                    s2, t2, v2, 
+                    s3, t3, v3,
+                );
+            }
+        }
+        println!("{} total triples", triples.len());
+
     }
 
 }
@@ -470,7 +795,8 @@ fn main() -> error::Result {
 
     fp::vector::initialize_limb_bit_index_table(adams_mult.resolution().prime());
 
-    adams_mult.compute_multiplications(mult_max_s, mult_max_t, mult_with_max_s, mult_with_max_t);
+    adams_mult.compute_all_multiplications();
+    //adams_mult.compute_multiplications(mult_max_s, mult_max_t, mult_with_max_s, mult_with_max_t);
     adams_mult.brute_force_compute_all_massey_products((7,30));
 
     /*
