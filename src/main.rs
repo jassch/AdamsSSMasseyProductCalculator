@@ -258,7 +258,7 @@ impl AdamsMultiplication {
                     let domain_max_s = min(i+mult_with_max_s,self.max_s);
                     let domain_max_t = min(j+mult_with_max_t,self.max_t);
 
-                    let mult_range_bidegree: Bidegree = (domain_max_s-i, domain_max_t-j);
+                    let mult_range_bidegree@(mr_s, mr_t): Bidegree = (domain_max_s-i, domain_max_t-j);
 
                     // extend hom            
                     #[cfg(not(feature = "concurrent"))]
@@ -279,9 +279,12 @@ impl AdamsMultiplication {
                     let mut matrix_hashmap: HashMap<Bidegree, Matrix> = HashMap::new();
 
                     // ok let's do the proper multiplications
-                    for i2 in 0..mult_with_max_s {
+                    for i2 in 0..mr_s {
                         //let module2 = res.module(i2); // ith free module
-                        for j2 in 0..mult_with_max_t {
+                        for j2 in 0..mr_t {
+                            if !res.has_computed_bidegree(i+i2, j+j2) {
+                                continue; 
+                            }
                             if res.number_of_gens_in_bidegree(i+i2,j+j2)==0 {
                                 continue; // nothing in codomain, multiplication is trivially 0
                             }
@@ -303,6 +306,7 @@ impl AdamsMultiplication {
                             */
                         }
                     }
+                    self.multiplication_matrices.insert((i,j,idx), matrix_hashmap);
                 }
             }
         }
@@ -375,19 +379,25 @@ impl AdamsMultiplication {
         println!("Max elt triples: {}", max_triples);
     }
 
-    pub fn left_multiplication_by(self: &Self, l: Bidegree, vec: &FpVector, r: Bidegree) -> Option<Matrix> {
+    pub fn left_multiplication_by(self: &Self, l: Bidegree, vec: &FpVector, r: Bidegree) -> Result<Matrix, String> {
         let p = self.prime();
         let (ls, lt) = l;
         let (rs, rt) = r;
         let (gs, gt) = (ls + rs, lt + rt);
-        self.num_gens_bidegree(l).and_then(|dim_l| -> Option<Matrix> {
+        self.num_gens_bidegree(l)
+            .ok_or(format!("Couldn't get gens in left bidegree ({}, {})", ls , lt))
+            .and_then(|dim_l| -> Result<Matrix, String> {
             assert_eq!(dim_l, vec.len()); // vec has to have same length as number of gens in bidegree l
 
-            self.num_gens_bidegree(r).and_then(|dim_r| -> Option<Matrix> {
-                self.num_gens(gs, gt).and_then(|dim_g| -> Option<Matrix> {
+            self.num_gens_bidegree(r)
+                .ok_or(format!("Couldn't get gens in right bidegree ({}, {})", rs , rt))
+                .and_then(|dim_r| -> Result<Matrix, String> {
+                self.num_gens(gs, gt)
+                    .ok_or(format!("Couldn't get gens in final bidegree ({}, {})", gs, gt))
+                    .and_then(|dim_g| -> Result<Matrix, String> {
                     let mut result = Matrix::new(p, dim_r, dim_g);
                     if (dim_l==0) || (dim_r==0) || (dim_g==0) {
-                        return Some(result);
+                        return Ok(result);
                     } else {
                         for ix in 0..dim_l {
                             let coeff = vec.entry(ix);
@@ -399,24 +409,24 @@ impl AdamsMultiplication {
                                     match hm.get(&r) {
                                         Some(m) => m,
                                         None => {
-                                            return None;
+                                            return Err(format!("Couldn't get multiplication matrix for gen ({}, {}, {}) in bidegree ({}, {})", ls, lt, ix, rs, rt));
                                         }
                                     }
                                 },
                                 None => {
-                                    return None; // couldn't find an important multiplication matrix
+                                    return Err(format!("Couldn't get multiplication matrices for gen ({}, {}, {})", ls, lt, ix)); // couldn't find an important multiplication matrix
                                 }
                             };
                             result += /* coeff* */ matrix; // coeff is 1 though, so we're good
                         }
-                        Some(result)
+                        Ok(result)
                     }
                 })
             })
         })
     }
 
-    pub fn right_multiplication_by(self: &Self, r: Bidegree, vec: &FpVector, l: Bidegree) -> Option<Matrix> {
+    pub fn right_multiplication_by(self: &Self, r: Bidegree, vec: &FpVector, l: Bidegree) -> Result<Matrix, String> {
         // TODO right now I'm assuming that the multiplication in the Adams Spectral Sequence is commutative
         // so we can return
         self.left_multiplication_by(r, vec, l)
@@ -461,14 +471,15 @@ impl AdamsMultiplication {
             
             // from (s_right, t_right) -> (s_tot, t_tot)
             let left_indet = match self.left_multiplication_by((*s1,*t1), v1, (s_right, t_right)) {
-                Some(lmat) => lmat,
-                None => { 
+                Ok(lmat) => lmat,
+                Err(err) => { 
                     return Err(
                         format!(
-                            "Couldn't compute the left multiplication ({}, {}, {})* : ({}, {}) -> ({}, {})", 
+                            "Couldn't compute the left multiplication ({}, {}, {})* : ({}, {}) -> ({}, {}) because {}", 
                             s1, t1, v1,
                             s_right, t_right,
-                            s_tot, t_tot
+                            s_tot, t_tot,
+                            err
                         )); 
                 }
             };
@@ -484,14 +495,15 @@ impl AdamsMultiplication {
             
             // from (s_right, t_right) -> (s_tot, t_tot)
             let right_indet = match self.right_multiplication_by((*s3,*t3), v3, (s_left, t_left)) {
-                Some(rmat) => rmat,
-                None => { 
+                Ok(rmat) => rmat,
+                Err(err) => { 
                     return Err(
                         format!(
-                            "Couldn't compute the right multiplication *({}, {}, {}) : ({}, {}) -> ({}, {})", 
+                            "Couldn't compute the right multiplication *({}, {}, {}) : ({}, {}) -> ({}, {}) because {}", 
                             s3, t3, v3,
                             s_left, t_left,
-                            s_tot, t_tot
+                            s_tot, t_tot,
+                            err
                         )); 
                 }
             };
@@ -504,26 +516,28 @@ impl AdamsMultiplication {
 
         // from (s_right, t_right) -> (s_tot, t_tot)
         let left_indet = match self.left_multiplication_by((*s1,*t1), v1, (s_right, t_right)) {
-            Some(lmat) => lmat,
-            None => { 
+            Ok(lmat) => lmat,
+            Err(err) => { 
                 return Err(
                     format!(
-                        "Couldn't compute the left multiplication ({}, {}, {})* : ({}, {}) -> ({}, {})", 
+                        "Couldn't compute the left multiplication ({}, {}, {})* : ({}, {}) -> ({}, {}) because {}", 
                         s1, t1, v1,
                         s_right, t_right,
-                        s_tot, t_tot
+                        s_tot, t_tot,
+                        err
                     )); 
             }
         };
         let right_indet = match self.right_multiplication_by((*s3, *t3), v3, (s_left, t_left)) {
-            Some(rmat) => rmat,
-            None => { 
+            Ok(rmat) => rmat,
+            Err(err) => { 
                 return Err(
                     format!(
-                        "Couldn't compute the right multiplication *({}, {}, {}) : ({}, {}) -> ({}, {})", 
+                        "Couldn't compute the right multiplication *({}, {}, {}) : ({}, {}) -> ({}, {}) because {}", 
                         s3, t3, v3,
                         s_left, t_left,
-                        s_tot, t_tot
+                        s_tot, t_tot,
+                        err
                     )); 
             }
         };
@@ -590,8 +604,8 @@ impl AdamsMultiplication {
                                 continue; // no nonzero vectors
                             }
                             let lmul_v1 = match self.left_multiplication_by((s1, t1), &v1, (s2, t2)) {
-                                Some(m) => m,
-                                None => {
+                                Ok(m) => m,
+                                Err(_) => {
                                     continue;
                                 }
                             };
