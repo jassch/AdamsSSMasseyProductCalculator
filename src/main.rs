@@ -1,15 +1,14 @@
 
 use std::cmp::min;
 use std::io::Write;
-use std::fmt;
-use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 use std::clone::Clone;
 use std::collections::hash_map::HashMap;
+
 use algebra::module::homomorphism::ModuleHomomorphism;
-use algebra::module::{FDModule, Module};
+use algebra::module::{Module};
 //use error::Error;
 use ext::chain_complex::{ChainComplex, FreeChainComplex, ChainHomotopy};
 use ext::CCC;
@@ -24,6 +23,9 @@ use saveload::Save;
 
 pub mod utils;
 use utils::AllVectorsIterator;
+
+pub mod adams;
+use adams::{Bidegree, AdamsElement, AdamsGenerator};
 
 /* need to store the products 
  * need to be able to extract Massey productable triples
@@ -51,133 +53,8 @@ use utils::AllVectorsIterator;
  * mu(a,b) = 0
  * 
  */
-type Bidegree = (u32, i32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct AdamsGenerator {
-    /// resolution degree
-    s: u32,
-    /// internal degree
-    t: i32, 
-    /// generator index
-    idx: usize, 
-}
 
-impl AdamsGenerator {
-    pub fn s(&self) -> u32 {
-        self.s
-    }
-    pub fn t(&self) -> i32 {
-        self.t
-    }
-    pub fn degree(&self) -> Bidegree {
-        (self.s, self.t)
-    }
-    pub fn n(&self) -> i32 {
-        self.t-self.s as i32
-    }
-    pub fn idx(&self) -> usize {
-        self.idx
-    }
-    pub fn new(s: u32, t: i32, idx: usize) -> AdamsGenerator {
-        AdamsGenerator {
-            s,
-            t,
-            idx,
-        }
-    }
-}
-
-impl Display for AdamsGenerator {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "({}, {}, {})", self.t, self.n(), self.idx())
-    }
-}
-
-impl From<(u32,i32,usize)> for AdamsGenerator {
-    fn from(tuple: (u32, i32, usize)) -> Self {
-        Self::new(tuple.0, tuple.1, tuple.2)
-    }
-}
-impl From<(Bidegree,usize)> for AdamsGenerator {
-    fn from(tuple: (Bidegree, usize)) -> Self {
-        let ((s,t), idx) = tuple;
-        Self::new(s, t, idx)
-    }
-}
-
-impl From<AdamsGenerator> for (u32,i32,usize) {
-    fn from(gen: AdamsGenerator) -> Self {
-        (gen.s(), gen.t(), gen.idx())
-    }
-}
-
-//type AdamsGenerator = (u32, i32, usize);
-//type AdamsElement = (u32,i32,FpVector);
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AdamsElement {
-    /// resolution degree
-    s: u32,
-    /// internal degree
-    t: i32, 
-    /// generator index
-    vec: FpVector, 
-}
-
-impl AdamsElement {
-    pub fn s(&self) -> u32 {
-        self.s
-    }
-    pub fn t(&self) -> i32 {
-        self.t
-    }
-    pub fn degree(&self) -> Bidegree {
-        (self.s, self.t)
-    }
-    pub fn n(&self) -> i32 {
-        self.t-self.s as i32
-    }
-    pub fn vec(&self) -> FpVector {
-        self.vec.clone()
-    }
-    pub fn new(s: u32, t: i32, vec: FpVector) -> AdamsElement {
-        AdamsElement {
-            s,
-            t,
-            vec,
-        }
-    }
-}
-
-impl Display for AdamsElement {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "({}, {}, {})", self.t, self.n(), self.vec())
-    }
-}
-
-impl From<(u32,i32,FpVector)> for AdamsElement {
-    fn from(tuple: (u32, i32, FpVector)) -> Self {
-        Self::new(tuple.0, tuple.1, tuple.2)
-    }
-}
-impl From<(Bidegree,FpVector)> for AdamsElement {
-    fn from(tuple: (Bidegree, FpVector)) -> Self {
-        let ((s,t), idx) = tuple;
-        Self::new(s, t, idx)
-    }
-}
-
-impl From<AdamsElement> for (u32,i32,FpVector) {
-    fn from(elt: AdamsElement) -> Self {
-        (elt.s, elt.t, elt.vec) // taken by move, so move out
-    }
-}
-impl From<&AdamsElement> for (u32,i32,FpVector) {
-    fn from(elt: &AdamsElement) -> Self {
-        (elt.s(), elt.t(), elt.vec()) // use method .vec() to avoid moving
-    }
-}
 
 //#[derive(Clone)]
 pub struct AdamsMultiplication {
