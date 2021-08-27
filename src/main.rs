@@ -1,6 +1,8 @@
 
 use std::cmp::min;
 use std::io::Write;
+use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
@@ -50,8 +52,132 @@ use utils::AllVectorsIterator;
  * 
  */
 type Bidegree = (u32, i32);
-type AdamsGenerator = (u32, i32, usize);
-type AdamsElement = (u32,i32,FpVector);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AdamsGenerator {
+    /// resolution degree
+    s: u32,
+    /// internal degree
+    t: i32, 
+    /// generator index
+    idx: usize, 
+}
+
+impl AdamsGenerator {
+    pub fn s(&self) -> u32 {
+        self.s
+    }
+    pub fn t(&self) -> i32 {
+        self.t
+    }
+    pub fn degree(&self) -> Bidegree {
+        (self.s, self.t)
+    }
+    pub fn n(&self) -> i32 {
+        self.t-self.s as i32
+    }
+    pub fn idx(&self) -> usize {
+        self.idx
+    }
+    pub fn new(s: u32, t: i32, idx: usize) -> AdamsGenerator {
+        AdamsGenerator {
+            s,
+            t,
+            idx,
+        }
+    }
+}
+
+impl Display for AdamsGenerator {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "({}, {}, {})", self.t, self.n(), self.idx())
+    }
+}
+
+impl From<(u32,i32,usize)> for AdamsGenerator {
+    fn from(tuple: (u32, i32, usize)) -> Self {
+        Self::new(tuple.0, tuple.1, tuple.2)
+    }
+}
+impl From<(Bidegree,usize)> for AdamsGenerator {
+    fn from(tuple: (Bidegree, usize)) -> Self {
+        let ((s,t), idx) = tuple;
+        Self::new(s, t, idx)
+    }
+}
+
+impl From<AdamsGenerator> for (u32,i32,usize) {
+    fn from(gen: AdamsGenerator) -> Self {
+        (gen.s(), gen.t(), gen.idx())
+    }
+}
+
+//type AdamsGenerator = (u32, i32, usize);
+//type AdamsElement = (u32,i32,FpVector);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AdamsElement {
+    /// resolution degree
+    s: u32,
+    /// internal degree
+    t: i32, 
+    /// generator index
+    vec: FpVector, 
+}
+
+impl AdamsElement {
+    pub fn s(&self) -> u32 {
+        self.s
+    }
+    pub fn t(&self) -> i32 {
+        self.t
+    }
+    pub fn degree(&self) -> Bidegree {
+        (self.s, self.t)
+    }
+    pub fn n(&self) -> i32 {
+        self.t-self.s as i32
+    }
+    pub fn vec(&self) -> FpVector {
+        self.vec.clone()
+    }
+    pub fn new(s: u32, t: i32, vec: FpVector) -> AdamsElement {
+        AdamsElement {
+            s,
+            t,
+            vec,
+        }
+    }
+}
+
+impl Display for AdamsElement {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "({}, {}, {})", self.t, self.n(), self.vec())
+    }
+}
+
+impl From<(u32,i32,FpVector)> for AdamsElement {
+    fn from(tuple: (u32, i32, FpVector)) -> Self {
+        Self::new(tuple.0, tuple.1, tuple.2)
+    }
+}
+impl From<(Bidegree,FpVector)> for AdamsElement {
+    fn from(tuple: (Bidegree, FpVector)) -> Self {
+        let ((s,t), idx) = tuple;
+        Self::new(s, t, idx)
+    }
+}
+
+impl From<AdamsElement> for (u32,i32,FpVector) {
+    fn from(elt: AdamsElement) -> Self {
+        (elt.s, elt.t, elt.vec) // taken by move, so move out
+    }
+}
+impl From<&AdamsElement> for (u32,i32,FpVector) {
+    fn from(elt: &AdamsElement) -> Self {
+        (elt.s(), elt.t(), elt.vec()) // use method .vec() to avoid moving
+    }
+}
 
 //#[derive(Clone)]
 pub struct AdamsMultiplication {
@@ -167,19 +293,19 @@ impl AdamsMultiplication {
         }
     }
     pub fn adams_elt_to_resoln_hom(self: &Self, e: &AdamsElement) -> ResolutionHomomorphism<Resolution<CCC>,Resolution<CCC>> {
-        let (s,t,v) = e;
+        let (s,t,v) = e.into();
         let hom = ResolutionHomomorphism::new(
             format!("({},{},{})", s, t, v),
             self.resolution(),
             self.resolution(),
-            *s,
-            *t
+            s,
+            t
         );
         let mut matrix = Matrix::new(v.prime(), v.len(), 1);
         for idx in 0..v.len() {
             matrix[idx].set_entry(0,v.entry(idx));
         }
-        hom.extend_step(*s, *t, Some(&matrix));
+        hom.extend_step(s, t, Some(&matrix));
         hom
     }
 
@@ -198,7 +324,7 @@ impl AdamsMultiplication {
             }
         };
         for index in 0..num_gens_left {
-            match self.multiplication_range_computed.get(&(s1,t1,index)) {
+            match self.multiplication_range_computed.get(&(s1,t1,index).into()) {
                 Some((s2_max,t2_max)) => {
                     if (s2 > *s2_max) || (t2 > *t2_max) {
                         return false;
@@ -230,7 +356,7 @@ impl AdamsMultiplication {
                     // get the hom for the corresponding
                     // generator
                     // lift map dual to g, F_i -> FF_2
-                    let adams_gen: AdamsGenerator = (i, j, idx);
+                    let adams_gen: AdamsGenerator = (i, j, idx).into();
                     let hom = 
                         ResolutionHomomorphism::new(
                             format!("mult-by-{}",g),
@@ -306,7 +432,7 @@ impl AdamsMultiplication {
                             */
                         }
                     }
-                    self.multiplication_matrices.insert((i,j,idx), matrix_hashmap);
+                    self.multiplication_matrices.insert((i,j,idx).into(), matrix_hashmap);
                 }
             }
         }
@@ -404,7 +530,7 @@ impl AdamsMultiplication {
                             if coeff == 0 {
                                 continue;
                             }
-                            let matrix = match self.multiplication_matrices.get(&(ls, lt, ix)) {
+                            let matrix = match self.multiplication_matrices.get(&(ls, lt, ix).into()) {
                                 Some(hm) => {
                                     match hm.get(&r) {
                                         Some(m) => m,
@@ -435,9 +561,9 @@ impl AdamsMultiplication {
 
     /// Indeterminacy of massey product only depends on the bidegree of the middle term.
     pub fn compute_indeterminacy_of_massey_product(self: &Self, a: &AdamsElement, b: Bidegree, c: &AdamsElement) -> Result<Subspace, String> {
-        let (s1, t1, v1) = a;
+        let (s1, t1, v1) = a.into();
         let (s2, t2) = b;
-        let (s3, t3, v3) = c;
+        let (s3, t3, v3) = c.into();
         let (s_left, t_left) = (s1 + s2 -1, t1+t2);
         let (s_right, t_right) = (s2 + s3 -1, t2+t3);
         let (s_tot, t_tot) = (s1 + s2 + s3 - 1, t1 + t2 + t3);
@@ -470,7 +596,7 @@ impl AdamsMultiplication {
             // just compute left multiplication
             
             // from (s_right, t_right) -> (s_tot, t_tot)
-            let left_indet = match self.left_multiplication_by((*s1,*t1), v1, (s_right, t_right)) {
+            let left_indet = match self.left_multiplication_by((s1, t1), &v1, (s_right, t_right)) {
                 Ok(lmat) => lmat,
                 Err(err) => { 
                     return Err(
@@ -494,7 +620,7 @@ impl AdamsMultiplication {
             // just compute left multiplication
             
             // from (s_right, t_right) -> (s_tot, t_tot)
-            let right_indet = match self.right_multiplication_by((*s3,*t3), v3, (s_left, t_left)) {
+            let right_indet = match self.right_multiplication_by((s3, t3), &v3, (s_left, t_left)) {
                 Ok(rmat) => rmat,
                 Err(err) => { 
                     return Err(
@@ -515,7 +641,7 @@ impl AdamsMultiplication {
         }
 
         // from (s_right, t_right) -> (s_tot, t_tot)
-        let left_indet = match self.left_multiplication_by((*s1,*t1), v1, (s_right, t_right)) {
+        let left_indet = match self.left_multiplication_by((s1,t1), &v1, (s_right, t_right)) {
             Ok(lmat) => lmat,
             Err(err) => { 
                 return Err(
@@ -528,7 +654,7 @@ impl AdamsMultiplication {
                     )); 
             }
         };
-        let right_indet = match self.right_multiplication_by((*s3, *t3), v3, (s_left, t_left)) {
+        let right_indet = match self.right_multiplication_by((s3, t3), &v3, (s_left, t_left)) {
             Ok(rmat) => rmat,
             Err(err) => { 
                 return Err(
@@ -691,7 +817,7 @@ impl AdamsMultiplication {
                                             if v3.is_zero() {
                                                 continue;
                                             }
-                                            triples.push(((s1,t1,v1.clone()), (s2,t2,v2.clone()), (s3, t3, v3.clone())));
+                                            triples.push(((s1,t1,v1.clone()).into(), (s2,t2,v2.clone()).into(), (s3, t3, v3.clone()).into()));
                                         }
                                     }
                                 }
@@ -703,9 +829,9 @@ impl AdamsMultiplication {
         }
 
         for (ae1, ae2, ae3) in &triples {
-            let (s1,t1,v1) = ae1;
-            let (s2,t2,v2) = ae2;
-            let (s3,t3,v3) = ae3;
+            let (s1,t1,v1) = ae1.into();
+            let (s2,t2,v2) = ae2.into();
+            let (s3,t3,v3) = ae3.into();
             let (shift_s,shift_t) = (s1+s2-1, t1+t2);
             let shift_n = shift_t-shift_s as i32;
             let (tot_s, tot_t) = (shift_s+s3, shift_t+t3);
@@ -754,7 +880,7 @@ impl AdamsMultiplication {
             
             if nonzero {
                 let massey_rep = FpVector::from_slice(v1.prime(), &answer);
-                let indet = match self.compute_indeterminacy_of_massey_product(ae1, (*s2, *t2), ae3) {
+                let indet = match self.compute_indeterminacy_of_massey_product(ae1, (s2, t2), ae3) {
                     Ok(subsp) => subsp,
                     Err(reason) => {
                         println!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
