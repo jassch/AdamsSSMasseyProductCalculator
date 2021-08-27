@@ -1,9 +1,13 @@
 
 use super::Bidegree;
 
+use saveload::{Save, Load};
 
 use std::fmt;
 use std::fmt::{Display, Formatter};
+
+use std::io::{Read, Write};
+use std::io;
 
 use fp::vector::FpVector;
 
@@ -71,5 +75,29 @@ impl From<AdamsElement> for (u32,i32,FpVector) {
 impl From<&AdamsElement> for (u32,i32,FpVector) {
     fn from(elt: &AdamsElement) -> Self {
         (elt.s(), elt.t(), elt.vec()) // use method .vec() to avoid moving
+    }
+}
+
+impl Save for AdamsElement {
+    fn save(&self, buffer: &mut impl Write) -> io::Result<()> {
+        self.s.save(buffer)?;
+        self.t.save(buffer)?;
+        self.vec.save(buffer)?;
+        Ok(())
+    }
+}
+
+impl Load for AdamsElement {
+    type AuxData = <FpVector as Load>::AuxData;
+
+    fn load(buffer: &mut impl Read, data: &Self::AuxData) -> io::Result<Self> {
+        let s = u32::load(buffer, &())?;
+        let t = i32::load(buffer, &())?;
+        let vec = FpVector::load(buffer, data)?;
+        Ok(AdamsElement {
+            s,
+            t,
+            vec,
+        })
     }
 }

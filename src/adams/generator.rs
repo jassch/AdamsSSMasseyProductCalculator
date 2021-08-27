@@ -1,6 +1,10 @@
 
 use super::Bidegree;
 
+use saveload::{Save, Load};
+
+use std::io::{Read, Write};
+use std::io;
 
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -63,5 +67,29 @@ impl From<(Bidegree,usize)> for AdamsGenerator {
 impl From<AdamsGenerator> for (u32,i32,usize) {
     fn from(gen: AdamsGenerator) -> Self {
         (gen.s(), gen.t(), gen.idx())
+    }
+}
+
+impl Save for AdamsGenerator {
+    fn save(&self, buffer: &mut impl Write) -> io::Result<()> {
+        self.s.save(buffer)?;
+        self.t.save(buffer)?;
+        self.idx.save(buffer)?;
+        Ok(())
+    }
+}
+
+impl Load for AdamsGenerator {
+    type AuxData = ();
+
+    fn load(buffer: &mut impl Read, data: &Self::AuxData) -> io::Result<Self> {
+        let s = u32::load(buffer, &())?;
+        let t = i32::load(buffer, &())?;
+        let idx = usize::load(buffer, &())?;
+        Ok(AdamsGenerator {
+            s,
+            t,
+            idx,
+        })
     }
 }

@@ -27,6 +27,11 @@ use utils::AllVectorsIterator;
 pub mod adams;
 use adams::{Bidegree, AdamsElement, AdamsGenerator};
 
+//pub mod computation;
+//use computation::ComputationResult;
+
+
+
 /* need to store the products 
  * need to be able to extract Massey productable triples
  * then need to compute the Massey products and store them.
@@ -80,7 +85,15 @@ pub struct AdamsMultiplication {
     /// where we could compute the multiplication
     multiplication_matrices: 
         HashMap<AdamsGenerator, HashMap<Bidegree, Matrix>>,
+    known_decompositions:
+        HashMap<AdamsElement, Vec<(AdamsElement, AdamsElement)>>
 }
+
+/*
+impl Save for AdamsMultiplication {
+
+}
+*/
 
 impl AdamsMultiplication {
     pub fn new(res_file_name: String, max_s: u32, max_t: i32) -> error::Result<AdamsMultiplication> {
@@ -130,6 +143,8 @@ impl AdamsMultiplication {
             multiplication_range_computed:
                 HashMap::new(),
             multiplication_matrices: 
+                HashMap::new(),
+            known_decompositions:
                 HashMap::new(),
         })
     }
