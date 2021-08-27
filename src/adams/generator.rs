@@ -82,7 +82,7 @@ impl Save for AdamsGenerator {
 impl Load for AdamsGenerator {
     type AuxData = ();
 
-    fn load(buffer: &mut impl Read, data: &Self::AuxData) -> io::Result<Self> {
+    fn load(buffer: &mut impl Read, _: &Self::AuxData) -> io::Result<Self> {
         let s = u32::load(buffer, &())?;
         let t = i32::load(buffer, &())?;
         let idx = usize::load(buffer, &())?;

@@ -4,6 +4,12 @@ use fp::prime::ValidPrime;
 use fp::matrix::Subspace;
 use fp::vector::FpVector;
 
+use saveload::{Save, Load};
+
+use std::io::{Read, Write};
+use std::io;
+
+use std::collections::HashMap;
 
 /// converts a vector in subspace coordinates to global coordinates
 pub fn subspace_to_global(subspace: &Subspace, vec: &FpVector) -> FpVector {
@@ -66,6 +72,59 @@ impl Iterator for AllVectorsIterator {
     }
 }
 
+/// save takes a reference to a data structure to store
+struct SaveHM<'a, K, V>(&'a HashMap<K,V>);
+
+impl <'a, K, V> From<&'a HashMap<K,V>> for SaveHM<'a, K,V> {
+    fn from(hm: &'a HashMap<K,V>) -> Self {
+        SaveHM(hm)
+    }
+}
+
+impl <'a, K, V> From<SaveHM<'a, K, V>> for &'a HashMap<K,V> {
+    fn from(slhm: SaveHM<'a, K, V>) -> Self {
+        let SaveHM(hm) = slhm;
+        hm
+    }
+}
+
+impl<'a, K: Save, V: Save> Save for SaveHM<'a, K,V> {
+    fn save(&self, buffer: &mut impl Write) -> io::Result<()> {
+        let SaveHM(hm) = self;
+        hm.len().save(buffer)?;
+        for (k,v) in hm.iter() {
+            k.save(buffer)?;
+            v.save(buffer)?;
+        }
+        Ok(())
+    }
+}
+
+/// Load returns a new owned data structure
+struct LoadHM<K, V>(HashMap<K,V>);
 
 
+impl <K, V> From<HashMap<K, V>> for LoadHM<K, V> {
+    fn from(hm: HashMap<K, V>) -> Self {
+        LoadHM(hm)
+    }
+}
+
+impl <K, V> From<LoadHM<K, V>> for HashMap<K,V> {
+    fn from(slhm: LoadHM<K, V>) -> Self {
+        let LoadHM(hm) = slhm;
+        hm
+    }
+}
+
+impl<K: Load, V: Load> Load for LoadHM<K, V> {
+    type AuxData = (K::AuxData, V::AuxData);
+    fn load(buffer: &mut impl Read, data: &Self::AuxData) -> io::Result<Self> {
+        let len = usize::load(buffer, &())?;
+
+        let mut result: HashMap<K, V> = HashMap::new();
+
+        Ok(LoadHM(result))
+    }
+}
 
