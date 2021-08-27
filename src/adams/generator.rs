@@ -29,7 +29,7 @@ impl AdamsGenerator {
         self.t
     }
     pub fn degree(&self) -> Bidegree {
-        (self.s, self.t)
+        (self.s, self.t).into()
     }
     pub fn n(&self) -> i32 {
         self.t-self.s as i32
@@ -48,7 +48,7 @@ impl AdamsGenerator {
 
 impl Display for AdamsGenerator {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "({}, {}, {})", self.t, self.n(), self.idx())
+        write!(f, "({}, {}, {})", self.n(), self.s(), self.idx())
     }
 }
 
@@ -59,7 +59,8 @@ impl From<(u32,i32,usize)> for AdamsGenerator {
 }
 impl From<(Bidegree,usize)> for AdamsGenerator {
     fn from(tuple: (Bidegree, usize)) -> Self {
-        let ((s,t), idx) = tuple;
+        let (deg, idx) = tuple;
+        let (s, t) = deg.into();
         Self::new(s, t, idx)
     }
 }

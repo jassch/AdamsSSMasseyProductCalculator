@@ -32,7 +32,7 @@ impl AdamsElement {
         self.t
     }
     pub fn degree(&self) -> Bidegree {
-        (self.s, self.t)
+        (self.s, self.t).into()
     }
     pub fn n(&self) -> i32 {
         self.t-self.s as i32
@@ -51,7 +51,7 @@ impl AdamsElement {
 
 impl Display for AdamsElement {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "({}, {}, {})", self.t, self.n(), self.vec())
+        write!(f, "({}, {}, {})", self.n(), self.s(), self.vec())
     }
 }
 
@@ -62,7 +62,8 @@ impl From<(u32,i32,FpVector)> for AdamsElement {
 }
 impl From<(Bidegree,FpVector)> for AdamsElement {
     fn from(tuple: (Bidegree, FpVector)) -> Self {
-        let ((s,t), idx) = tuple;
+        let (deg, idx) = tuple;
+        let (s, t) = deg.into();
         Self::new(s, t, idx)
     }
 }
