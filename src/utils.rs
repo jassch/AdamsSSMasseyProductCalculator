@@ -73,7 +73,7 @@ impl Iterator for AllVectorsIterator {
 }
 
 /// save takes a reference to a data structure to store
-pub struct SaveHM<'a, K, V>(&'a HashMap<K,V>);
+pub struct SaveHM<'a, K, V>(pub &'a HashMap<K,V>);
 
 impl <'a, K, V> From<&'a HashMap<K,V>> for SaveHM<'a, K,V> {
     fn from(hm: &'a HashMap<K,V>) -> Self {
@@ -101,7 +101,7 @@ impl<'a, K: Save, V: Save> Save for SaveHM<'a, K,V> {
 }
 
 /// Load returns a new owned data structure
-pub struct LoadHM<K, V>(HashMap<K,V>);
+pub struct LoadHM<K, V>(pub HashMap<K,V>);
 
 
 impl <K, V> From<HashMap<K, V>> for LoadHM<K, V> {

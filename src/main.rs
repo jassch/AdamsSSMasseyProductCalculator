@@ -27,6 +27,8 @@ use utils::AllVectorsIterator;
 pub mod adams;
 use adams::{Bidegree, AdamsElement, AdamsGenerator, AdamsMultiplication};
 
+pub mod lattice;
+
 //pub mod computation;
 //use computation::ComputationResult;
 
@@ -87,7 +89,7 @@ fn main() -> error::Result {
 
     adams_mult.compute_all_multiplications();
     //adams_mult.compute_multiplications(mult_max_s, mult_max_t, mult_with_max_s, mult_with_max_t);
-    adams_mult.brute_force_compute_all_massey_products((7,30));
+    adams_mult.brute_force_compute_all_massey_products((7,30).into());
 
     /*
     println!("Iterate over whole F_2^5");

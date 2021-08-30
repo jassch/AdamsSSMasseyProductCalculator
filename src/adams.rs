@@ -8,8 +8,12 @@ use saveload::{Save, Load};
 use std::io::{Read, Write};
 use std::io;
 
+use std::cmp::{PartialOrd, Ordering};
+
 use std::fmt;
 use std::fmt::{Display, Formatter};
+
+use crate::lattice::{JoinSemilattice, MeetSemilattice, Lattice, meet, join};
 
 pub use element::AdamsElement;
 pub use generator::AdamsGenerator;
@@ -17,13 +21,120 @@ pub use multiplication::AdamsMultiplication;
 
 /// type synonym for (s,t) bidegrees
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Bidegree {
     /// resolution degree
     s: u32,
     /// internal degree
     t: i32, 
 }
+
+/// iterates over a rectangle of (s,t) degrees specified by min and max inclusive
+/// iterates over t first (i.e. if this were a pair of loops, s is the outer loop, t is the inner loop)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] 
+pub struct BidegreeIterator {
+    /// Bidegree to start at
+    min: Bidegree,
+    /// Bidegree to iterate over (includes this degree)
+    max: Bidegree,
+    /// current location in iteration
+    current: Bidegree, 
+}
+
+impl BidegreeIterator {
+    pub fn new(min: Bidegree, max: Bidegree) -> Self {
+        BidegreeIterator {
+            min,
+            max,
+            current: min,
+        }
+    }
+    pub fn new_from_origin(max: Bidegree) -> Self {
+        Self::new((0,0).into(), max)
+    }
+}
+
+impl From<Bidegree> for BidegreeIterator {
+    fn from(deg: Bidegree) -> Self {
+        Self::new((0,0).into(), deg)
+    }
+}
+impl <'a> From<&'a Bidegree> for BidegreeIterator {
+    fn from(deg: &'a Bidegree) -> Self {
+        Self::new((0,0).into(), *deg)
+    }
+}
+
+impl Iterator for BidegreeIterator {
+    type Item = Bidegree;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current < self.max {
+            if self.current.t < self.max.t {
+                self.current.t += 1;
+            } else {
+                self.current.t = self.min.t;
+                self.current.s += 1;
+            }
+            Some(self.current)
+        } else {
+            None
+        }
+    }
+}
+
+/// iterates over a rectangle of (n,s) degrees specified by min and max inclusive
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] 
+pub struct StemIterator {
+    /// Bidegree to start at
+    min: Bidegree,
+    /// Bidegree to iterate over (includes this degree)
+    max: Bidegree,
+    /// current location in iteration
+    current: Bidegree,
+}
+
+// might want to split Bidegrees and StemDegrees, because they should have different ordering properties
+impl StemIterator {
+    pub fn new(min: Bidegree, max: Bidegree) -> Self {
+        StemIterator {
+            min,
+            max,
+            current: min,
+        }
+    }
+    pub fn new_from_origin(max: Bidegree) -> Self {
+        Self::new((0,0).into(), max)
+    }
+}
+
+impl From<Bidegree> for StemIterator {
+    fn from(deg: Bidegree) -> Self {
+        Self::new((0,0).into(), deg)
+    }
+}
+impl <'a> From<&'a Bidegree> for StemIterator {
+    fn from(deg: &'a Bidegree) -> Self {
+        Self::new((0,0).into(), *deg)
+    }
+}
+
+impl Iterator for StemIterator {
+    type Item = Bidegree;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current.n() <= self.max.n() && self.current.s() <= self.max.s() && self.current != self.max {
+            if self.current.n() < self.max.n() {
+                self.current.t += 1; // n = t-s, so increment t to increment n
+            } else {
+                self.current.s += 1; // increment s first
+                self.current.t = self.min.n()+self.current.s as i32; // sets n to self.min.n()
+            }
+            Some(self.current)
+        } else {
+            None
+        }
+    }
+}
+
 
 impl Bidegree {
     pub fn s(&self) -> u32 {
@@ -39,6 +150,31 @@ impl Bidegree {
         Self {
             s,
             t,
+        }
+    }
+
+    pub fn iter_stem(&self) -> StemIterator {
+        StemIterator::from(self)
+    }
+
+    pub fn iter_s_t(&self) -> BidegreeIterator {
+        BidegreeIterator::from(self)
+    }
+
+}
+
+impl PartialOrd for Bidegree {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let (s1,t1): (u32, i32) = self.into();
+        let (s2,t2) = other.into();
+        if s1 == s2 && t1 == t2 {
+            Some(Ordering::Equal)
+        } else if s1 <= s2 && t1 <= t2 {
+            Some(Ordering::Less)
+        } else if s1 >= s2 && t1 >= t2 {
+            Some(Ordering::Greater)
+        } else {
+            None
         }
     }
 }
@@ -58,6 +194,18 @@ impl From<(u32,i32)> for Bidegree {
 impl From<Bidegree> for (u32,i32) {
     fn from(deg: Bidegree) -> Self {
         (deg.s(), deg.t())
+    }
+}
+
+impl <'a> From<&'a Bidegree> for (u32,i32) {
+    fn from(deg: &'a Bidegree) -> Self {
+        (deg.s(), deg.t())
+    }
+}
+
+impl <'a> From<&'a Bidegree> for (&'a u32,&'a i32) {
+    fn from(deg: &'a Bidegree) -> Self {
+        (&deg.s, &deg.t)
     }
 }
 
@@ -81,3 +229,22 @@ impl Load for Bidegree {
         })
     }
 }
+
+impl MeetSemilattice for Bidegree {
+    fn meet(self, rhs: Bidegree) -> Bidegree {
+        Bidegree {
+            s: meet(self.s, rhs.s),
+            t: meet(self.t, rhs.t),
+        }
+    }
+}
+impl JoinSemilattice for Bidegree {
+    fn join(self, rhs: Bidegree) -> Bidegree {
+        Bidegree {
+            s: join(self.s, rhs.s),
+            t: join(self.t, rhs.t),
+        }
+    }
+}
+
+impl Lattice for Bidegree {}

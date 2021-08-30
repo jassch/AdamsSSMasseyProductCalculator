@@ -3,6 +3,7 @@ use std::cmp::min;
 use std::io::Write;
 use std::fs::{File, DirBuilder};
 
+use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::clone::Clone;
@@ -28,6 +29,7 @@ use saveload::{Save, Load};
 use super::{Bidegree, AdamsElement, AdamsGenerator};
 
 use crate::utils::{AllVectorsIterator, LoadHM, SaveHM};
+use crate::lattice::{join, meet, JoinSemilattice, MeetSemilattice, Lattice};
 
 //#[derive(Clone)]
 pub struct AdamsMultiplication {
@@ -52,7 +54,7 @@ pub struct AdamsMultiplication {
     /// stores the multiplication matrices for each degree 
     /// where we could compute the multiplication
     multiplication_matrices: 
-        HashMap<AdamsGenerator, HashMap<Bidegree, Matrix>>,
+        HashMap<AdamsGenerator, (Bidegree, HashMap<Bidegree, Matrix>)>,
     /// directory to store computed multiplications
     /// each file will have the multiplication matrices as computed so far
     /// it's not great. We'll have to see how we can make this more efficient
@@ -65,10 +67,14 @@ pub struct AdamsMultiplication {
 
 impl AdamsMultiplication {
 
+    pub fn max_deg(&self) -> Bidegree {
+        (self.max_s, self.max_t).into()
+    }
+
     fn ensure_multiplication_data_directory_exists(&self) -> io::Result<()> {
         DirBuilder::new()
             .recursive(true)
-            .create(self.multiplication_data_directory)
+            .create(self.multiplication_data_directory.clone())
     }
 
     pub fn new(res_file_name: String, multiplication_data_directory: String, max_s: u32, max_t: i32) -> error::Result<AdamsMultiplication> {
@@ -144,7 +150,7 @@ impl AdamsMultiplication {
     }
 
     /// return nonmutable reference
-    pub fn multiplication_matrices(&self) -> &HashMap<AdamsGenerator, HashMap<Bidegree, Matrix>> {
+    pub fn multiplication_matrices(&self) -> &HashMap<AdamsGenerator, (Bidegree, HashMap<Bidegree, Matrix>)> {
         &self.multiplication_matrices
     }
 
@@ -205,7 +211,7 @@ impl AdamsMultiplication {
 
     fn multiplication_file_path(&self, g: AdamsGenerator) -> PathBuf {
         let path: PathBuf = 
-            [self.multiplication_data_directory, Self::multiplication_file_name(g)]
+            [self.multiplication_data_directory.clone(), Self::multiplication_file_name(g)]
                 .iter()
                 .collect();
         path
@@ -216,34 +222,131 @@ impl AdamsMultiplication {
         let path = self.multiplication_file_path(g);
         if path.exists() {
             let mut file = File::open(path)?;
-            let max_s = u32::load(&mut file, &())?;
-            let max_t = i32::load(&mut file, &())?;
+            let max_deg = Bidegree::load(&mut file, &())?;
             let hm: HashMap<Bidegree, Matrix> = LoadHM::load(&mut file, &((), self.prime()))?.into();
-            Ok(Some(((max_s, max_t).into(),hm)))
+            Ok(Some((max_deg, hm)))
         } else {
             // this is actually fine though
             Ok(None)
         }
-        
+    }
+    pub fn save_multiplications_for(&self, g: AdamsGenerator, computed_range: Bidegree, matrices: &HashMap<Bidegree, Matrix>) 
+        -> io::Result<()>
+    {
+        let path = self.multiplication_file_path(g);
+        let mut file = File::create(path)?;
+        computed_range.save(&mut file)?;
+        SaveHM(&matrices).save(&mut file)?;
+        Ok(())
     }
 
     pub fn compute_multiplication(&self, g: AdamsGenerator, mult_with_max: Bidegree) 
         -> Result<(Bidegree, HashMap<Bidegree, Matrix>), String> {
         let (s, t, idx) = g.into();
-        if s > self.max_s || t > self.max_t {
+        let g_deg = g.degree();
+        let max_deg = self.max_deg();
+        if !(g_deg <= max_deg) {
             return Err(format!("({}, {}, {}) is out of computed range: ({}, {})", s, t, idx, self.max_s, self.max_t));
         }
-        let (rmax_s, rmax_t) = mult_with_max.into();
+        //let (rmax_s, rmax_t) = mult_with_max.into();
         let rmax_poss_s = self.max_s - s as u32;
         let rmax_poss_t = self.max_t - t as i32;
+        let rmax_poss = (rmax_poss_s, rmax_poss_t).into();
 
-        let actual_rmax_s = min(rmax_s, rmax_poss_s);
-        let actual_rmax_t = min(rmax_t, rmax_poss_t);
+        //let actual_rmax_s = min(rmax_s, rmax_poss_s);
+        //let actual_rmax_t = min(rmax_t, rmax_poss_t);
+        let actual_rmax = mult_with_max.meet(rmax_poss);
         
-        let hm = self.load_multiplications_for(g)?;
+        let already_computed = match self.load_multiplications_for(g) {
+            Ok(stuff) => stuff,
+            Err(e) => { return Err(e.to_string()); }
+        };
+
+        let (partially_computed, computed_range, mut hm) = match already_computed {
+            Some((range, hm)) => (true, range, hm),
+            None => (false, (0,0).into(), HashMap::new())
+        };
+
+        let compute_to = if partially_computed {
+            // determine what's left to compute
+            if actual_rmax <= computed_range { // done, can't compute more 
+                return Ok((computed_range, hm))
+            } 
+            // this should be true, or we're going to run into problems
+            // might remove this restriction later
+            assert!(rmax_poss >= computed_range);
+            computed_range.join(actual_rmax) // should compute a strictly larger rectangle
+        } else {
+            actual_rmax
+        };
 
         let hom = self.adams_gen_to_resoln_hom(g)?;
 
+        let (compute_to_s, compute_to_t) = compute_to.into();
+
+        // extend hom            
+        #[cfg(not(feature = "concurrent"))]
+        hom.extend(
+            compute_to_s, 
+            compute_to_t
+        );
+
+        #[cfg(feature = "concurrent")]
+        hom.extend_concurrent(
+            compute_to_s, 
+            compute_to_t, 
+            &bucket);
+
+        // hom has been extended, read off and insert the multiplication matrices
+
+        // ok let's do the proper multiplications
+        for rhs in compute_to.iter_s_t() { 
+            // might want to iterate over stems, since these are the only nonzero ones, but for now
+            // we just skip those with n negative
+            if rhs.n() < 0 {
+                continue; // rhs trivially empty, since n is negative
+            }
+            if partially_computed && rhs <= computed_range {
+                continue; // already computed, no need to compute again
+            }
+            let target_deg = (s + rhs.s(), t + rhs.t()).into();
+            let dim_rhs = match self.num_gens_bidegree(rhs) {
+                Some(n) => n,
+                None => {
+                    return Err(format!(
+                        "Dimension at rhs {} not computed. Expected for computing multiplication by {} in degree {}",
+                        rhs,
+                        g,
+                        rhs,
+                    ));
+                }
+            };
+            let dim_target = match self.num_gens_bidegree(target_deg) {
+                Some(n) => n,
+                None => {
+                    return Err(format!(
+                        "Dimension at target {} not computed. Expected for computing multiplication by {} in degree {}",
+                        target_deg,
+                        g,
+                        rhs,
+                    ));
+                } // this is an error 
+            };
+            if dim_rhs==0 || dim_target==0 {
+                continue; // nothing in domain, or nothing in codomain, multiplication is trivially 0
+                // store nothing
+            }
+            //let gens2 = &module2.gen_names()[j2];
+            let matrix = hom.get_map(target_deg.s()).hom_k(rhs.t());
+            // convert to fp::matrix::Matrix and store
+            hm.insert(rhs, Matrix::from_vec(self.prime(), &matrix));
+        }
+        match self.save_multiplications_for(g, compute_to, &hm) {
+            Ok(_) => {},
+            Err(e) => { return Err(e.to_string()); }
+        };
+
+        Ok((compute_to, hm))
     }
 
     /// is the bilinear map Adams(deg1) x Adams(deg2) -> Adams(deg1+deg2)
@@ -371,7 +474,7 @@ impl AdamsMultiplication {
                             */
                         }
                     }
-                    self.multiplication_matrices.insert((i,j,idx).into(), matrix_hashmap);
+                    self.multiplication_matrices.insert((i,j,idx).into(), (mult_range_bidegree, matrix_hashmap));
                 }
             }
         }
@@ -470,7 +573,7 @@ impl AdamsMultiplication {
                                 continue;
                             }
                             let matrix = match self.multiplication_matrices.get(&(ls, lt, ix).into()) {
-                                Some(hm) => {
+                                Some((_range, hm)) => {
                                     match hm.get(&r) {
                                         Some(m) => m,
                                         None => {
