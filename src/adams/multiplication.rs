@@ -35,22 +35,18 @@ use crate::lattice::{join, meet, JoinSemilattice, MeetSemilattice, Lattice};
 pub struct AdamsMultiplication {
     /// the resolution object
     resolution: Arc<Resolution<CCC>>,
-    // an Arc object to copy
-    //resolution_arc: Arc<&Resolution<CCC>>,
     /// filename storing resolution data
     res_file_name: String,
-    /// convenience hash map to keep track of the 
-    /// number of generators in each degree
-    num_gens: 
-        HashMap<Bidegree,usize>,
+    ///directory to incrementally store resolutions to save progress
+    res_data_directory: String, 
     /// max_s w/ dimensions computed
     max_s: u32,
     /// max_t w/ dimensions computed
     max_t: i32,
     /// keeps track of which degrees the multiplication by 
     /// a given basis element (s,t,index) is computed for
-    multiplication_range_computed:
-        HashMap<AdamsGenerator, Bidegree>,
+    //multiplication_range_computed:
+    //    HashMap<AdamsGenerator, Bidegree>,
     /// stores the multiplication matrices for each degree 
     /// where we could compute the multiplication
     multiplication_matrices: 
@@ -71,13 +67,101 @@ impl AdamsMultiplication {
         (self.max_s, self.max_t).into()
     }
 
+    /// largest s for which (n,s) might be nonzero
+    fn max_nonzero_s(&self, n: u32) -> Option<u32> {
+        if n == 0 {
+            None
+        } else {
+            // max nonzero s is between
+            // (n-3)/2 and (n-1)/2
+            // which is (n-1)/2 and (n-1)/2-1
+            let max_s_0 = (n-1)/2; // any index greater than this will definitely be 0
+            let n_res = n % 8;
+            let max_s = if n_res == 0 || n_res == 5 || n_res == 7 {
+                max_s_0 - 1 // in these cases, we know that (n, max_s_0) will definitely be 0, so decrease max_s_0 by 1
+            } else {
+                max_s_0
+            };
+            Some(max_s)
+        }
+    }
+    
+    pub fn is_stem_fully_computed(&self, n: u32) -> bool {
+        match self.max_nonzero_s(n) {
+            Some(s) => s <= self.max_s,
+            None => false
+        } 
+    }
+
+    pub fn max_fully_computed_stem(&self) -> Option<u32> {
+        // stem n is fully computed if we have computed
+        // (n,0)..(n,s) for all s where n >= 2s+epsilon
+        // where epsilon is 1 for s 0,1 mod 4, 2 for s 2 mod 4, and 3 for s 3 mod 4 
+        // i.e. s where s <= (n-epsilon)/2
+        // or for degrees (t,s) with t=s+n for all nonnegative s with t-s >= 2s+epsilon
+        // or s with s < (t-epsilon)/3
+        // so we get (t,s) degrees
+        // (n,0), (n-1,1), (n-2, 2) ... (n-max_s(n), max_s(n))
+        let mut fully_computed = None;
+        for n in 1..=self.max_t as u32 {
+            if !self.is_stem_fully_computed(n) {
+                break;
+            } else {
+                fully_computed = Some(n);
+            }
+        }
+        fully_computed
+    }
+
+    fn ensure_resolution_data_directory_exists(&self) -> io::Result<()> {
+        DirBuilder::new()
+            .recursive(true)
+            .create(self.res_data_directory.clone())
+    }
+
     fn ensure_multiplication_data_directory_exists(&self) -> io::Result<()> {
         DirBuilder::new()
             .recursive(true)
             .create(self.multiplication_data_directory.clone())
     }
 
-    pub fn new(res_file_name: String, multiplication_data_directory: String, max_s: u32, max_t: i32) -> error::Result<AdamsMultiplication> {
+    pub fn extend_resolution_to(&mut self, deg: Bidegree) -> io::Result<()> {
+        if deg <= self.max_deg() {
+            return Ok(());
+        }
+
+        let mut cur_deg = self.max_deg();
+
+        while cur_deg < deg {
+            if cur_deg.s() < deg.s() {
+                *cur_deg.s_mut() += 1;
+            } else {
+                *cur_deg.t_mut() += 1;
+            }
+
+            let (s,t) = cur_deg.into();
+
+            #[cfg(not(feature = "concurrent"))]
+            self.resolution.compute_through_bidegree(s, t);
+        
+            #[cfg(feature = "concurrent")]
+            {
+                let bucket = ext::utils::query_bucket();
+                self.resolution.compute_through_bidegree_concurrent(s, t, &bucket);
+            }
+                
+            let file: File = File::create(self.resolution_file_path(cur_deg))?;
+            let mut buf_file = std::io::BufWriter::new(file);
+            self.resolution.save(&mut buf_file)?;
+
+        }
+        let file: File = File::create(&self.res_file_name)?;
+        let mut buf_file = std::io::BufWriter::new(file);
+        self.resolution.save(&mut buf_file)?;
+        Ok(())
+    }
+
+    pub fn new(res_file_name: String, res_data_directory: String, multiplication_data_directory: String, max_s: u32, max_t: i32) -> error::Result<AdamsMultiplication> {
         let save_path = Path::new(&res_file_name);
         //let mut res_opt: Result<Resolution<CCC>,Error> = error::from_string("could not construct module");
         let res_opt;
@@ -118,11 +202,12 @@ impl AdamsMultiplication {
         let result = AdamsMultiplication {
             resolution: res,
             res_file_name: res_file_name,
-            num_gens: num_gens,
+            res_data_directory,
+            //num_gens: num_gens,
             max_s: max_s,
             max_t: max_t,
-            multiplication_range_computed:
-                HashMap::new(),
+            //multiplication_range_computed:
+            //    HashMap::new(),
             multiplication_matrices: 
                 HashMap::new(),
             multiplication_data_directory,
@@ -134,6 +219,8 @@ impl AdamsMultiplication {
 
         Ok(result)
     }
+
+    
 
     /// return Arc to the resolution
     pub fn resolution(&self) -> Arc<Resolution<CCC>>{
@@ -155,7 +242,12 @@ impl AdamsMultiplication {
     }
 
     pub fn num_gens(&self, s: u32, t: i32) -> Option<usize> {
-        self.num_gens.get(&(s,t).into()).map(|u| -> usize { u.clone() })
+        if self.resolution.has_computed_bidegree(s, t) {
+            Some(self.resolution.number_of_gens_in_bidegree(s, t))
+        } else {
+            None
+        }
+        //self.num_gens.get(&(s,t).into()).map(|u| -> usize { u.clone() })
     }
     pub fn num_gens_bidegree(&self, deg: Bidegree) -> Option<usize> {
         let (s,t) = deg.into();
@@ -216,6 +308,18 @@ impl AdamsMultiplication {
                 .collect();
         path
     }
+    
+    fn resolution_file_name(deg: Bidegree) -> String {
+        format!("S_2_resolution_s{}_t{}.data", deg.s(), deg.t())
+    }
+
+    fn resolution_file_path(&self, deg: Bidegree) -> PathBuf {
+        let path: PathBuf = 
+            [self.res_data_directory.clone(), Self::resolution_file_name(deg)]
+                .iter()
+                .collect();
+        path
+    }
 
     pub fn load_multiplications_for(&self, g: AdamsGenerator) 
         -> io::Result<Option<(Bidegree, HashMap<Bidegree, Matrix>)>> {
@@ -242,6 +346,7 @@ impl AdamsMultiplication {
 
     pub fn compute_multiplication(&self, g: AdamsGenerator, mult_with_max: Bidegree) 
         -> Result<(Bidegree, HashMap<Bidegree, Matrix>), String> {
+        eprintln!("Computing multiplication for {}", g);
         let (s, t, idx) = g.into();
         let g_deg = g.degree();
         let max_deg = self.max_deg();
@@ -284,18 +389,33 @@ impl AdamsMultiplication {
 
         let (compute_to_s, compute_to_t) = compute_to.into();
 
-        // extend hom            
+        // extend hom  
+              
         #[cfg(not(feature = "concurrent"))]
         hom.extend(
-            compute_to_s, 
-            compute_to_t
+            compute_to_s+s, 
+            compute_to_t+t
         );
+        
+        /*
+        #[cfg(not(feature = "concurrent"))]
+        hom.extend_all();
+        */
 
         #[cfg(feature = "concurrent")]
+        let bucket = ext::utils::query_bucket();
+
+        
+        #[cfg(feature = "concurrent")]
         hom.extend_concurrent(
-            compute_to_s, 
-            compute_to_t, 
+            compute_to_s+s, 
+            compute_to_t+t, 
             &bucket);
+        /*
+        #[cfg(feature = "concurrent")]
+        hom.extend_all_concurrent(
+            &bucket);
+        */
 
         // hom has been extended, read off and insert the multiplication matrices
 
@@ -336,6 +456,7 @@ impl AdamsMultiplication {
                 continue; // nothing in domain, or nothing in codomain, multiplication is trivially 0
                 // store nothing
             }
+            eprintln!("with {}", rhs);
             //let gens2 = &module2.gen_names()[j2];
             let matrix = hom.get_map(target_deg.s()).hom_k(rhs.t());
             // convert to fp::matrix::Matrix and store
@@ -351,6 +472,8 @@ impl AdamsMultiplication {
 
     /// is the bilinear map Adams(deg1) x Adams(deg2) -> Adams(deg1+deg2)
     /// completely computed?
+    /// // TODO reimplement this
+    /*
     pub fn multiplication_completely_computed(self: &Self, deg1: Bidegree, deg2: Bidegree) -> bool {
         let (s1,t1) = deg1.into();
         let (s2,t2) = deg2.into();
@@ -378,11 +501,33 @@ impl AdamsMultiplication {
         }
         return true;
     }
+    */
 
-    pub fn compute_all_multiplications(self: &mut Self) {
-        self.compute_multiplications(self.max_s, self.max_t, self.max_s, self.max_t);
+    pub fn compute_all_multiplications(&mut self) -> Result<(), String> {
+        //self.compute_multiplications(self.max_s, self.max_t, self.max_s, self.max_t);
+        self.compute_multiplications(self.max_deg(), self.max_deg())
     }
 
+    pub fn compute_multiplications(&mut self, lhs_max: Bidegree, rhs_max: Bidegree) -> Result<(), String> {
+        let lhs_max = lhs_max.meet(self.max_deg()); // don't go out of range
+        let rhs_max = rhs_max.meet(self.max_deg()); // don't go out of range
+        for lhs in lhs_max.iter_s_t() {
+            let dim = match self.num_gens_bidegree(lhs) {
+                Some(n) => n,
+                None => {
+                    return Err(format!("compute_multiplications: Expected {} to be computed!", lhs))
+                }
+            };
+            for idx in 0..dim {
+                let g = (lhs,idx).into();
+                let mult_data = self.compute_multiplication(g, rhs_max)?;
+                self.multiplication_matrices.insert(g, mult_data);
+            }
+        }
+        Ok(())
+    }
+
+    /*
     pub fn compute_multiplications(self: &mut Self, mult_max_s:u32, mult_max_t:i32, mult_with_max_s:u32, mult_with_max_t:i32) {
         let mult_max_s = min(mult_max_s, self.max_s);
         let mult_max_t = min(mult_max_t, self.max_t);
@@ -479,6 +624,7 @@ impl AdamsMultiplication {
             }
         }
     }
+    */
 
     /// only uses the dimensions, none of the multiplicative structure
     pub fn possible_nontrivial_massey_products(self: &Self) {

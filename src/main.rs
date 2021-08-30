@@ -74,22 +74,28 @@ impl Save for AdamsMultiplication {
 
 fn main() -> error::Result {
     let save_file_name = String::from("S_2_resolution.data");
+    let resolution_saves_directory = String::from("S_2_resolution_incremental_data");
     let multiplication_data_directory = String::from("S_2_multiplication_data");
     
     let max_s=30;
     let max_t=60;
-    let mult_max_s=15;
-    let mult_max_t=30;
-    let mult_with_max_s=15;
-    let mult_with_max_t=30;
+    //let mult_max_s=15;
+    //let mult_max_t=30;
+    //let mult_with_max_s=15;
+    //let mult_with_max_t=30;
 
-    let mut adams_mult: AdamsMultiplication = AdamsMultiplication::new(save_file_name, multiplication_data_directory, max_s, max_t)?;
+    let mut adams_mult: AdamsMultiplication = AdamsMultiplication::new(save_file_name, resolution_saves_directory, multiplication_data_directory, max_s, max_t)?;
 
     fp::vector::initialize_limb_bit_index_table(adams_mult.resolution().prime());
 
-    adams_mult.compute_all_multiplications();
+    match adams_mult.compute_all_multiplications() {
+        Ok(_) => {},
+        Err(err_info) => {
+            eprintln!("{}", err_info);
+        }
+    }
     //adams_mult.compute_multiplications(mult_max_s, mult_max_t, mult_with_max_s, mult_with_max_t);
-    adams_mult.brute_force_compute_all_massey_products((7,30).into());
+    //adams_mult.brute_force_compute_all_massey_products((7,30).into());
 
     /*
     println!("Iterate over whole F_2^5");
