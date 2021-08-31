@@ -1,28 +1,21 @@
 
 use std::cmp::min;
-use std::io::Write;
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 use std::clone::Clone;
-use std::collections::hash_map::HashMap;
 
-use algebra::module::homomorphism::ModuleHomomorphism;
 use algebra::module::{Module};
 //use error::Error;
-use ext::chain_complex::{ChainComplex, FreeChainComplex, ChainHomotopy};
+use ext::chain_complex::{ChainComplex, FreeChainComplex};
 use ext::CCC;
 use ext::resolution_homomorphism::ResolutionHomomorphism;
 use ext::resolution::Resolution;
 use ext::utils::construct;
-use fp::prime::ValidPrime;
 use fp::matrix::Matrix;
-use fp::matrix::Subspace;
-use fp::vector::FpVector;
 use saveload::Save;
 
 pub mod utils;
-use utils::AllVectorsIterator;
 
 pub mod adams;
 use adams::{Bidegree, AdamsElement, AdamsGenerator, AdamsMultiplication};
@@ -78,13 +71,15 @@ fn main() -> error::Result {
     let multiplication_data_directory = String::from("S_2_multiplication_data");
     
     let max_s=30;
-    let max_t=60;
+    let max_t=90;
     //let mult_max_s=15;
     //let mult_max_t=30;
     //let mult_with_max_s=15;
     //let mult_with_max_t=30;
 
-    let mut adams_mult: AdamsMultiplication = AdamsMultiplication::new(save_file_name, resolution_saves_directory, multiplication_data_directory, max_s, max_t)?;
+    let mut adams_mult: AdamsMultiplication = AdamsMultiplication::new(save_file_name, resolution_saves_directory, multiplication_data_directory)?;
+
+    adams_mult.extend_resolution_to((max_s,max_t).into())?;
 
     fp::vector::initialize_limb_bit_index_table(adams_mult.resolution().prime());
 

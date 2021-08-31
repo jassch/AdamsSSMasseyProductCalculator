@@ -28,7 +28,7 @@ use saveload::{Save, Load};
 
 use super::{Bidegree, AdamsElement, AdamsGenerator};
 
-use crate::utils::{AllVectorsIterator, LoadHM, SaveHM};
+use crate::utils::{AllVectorsIterator, LoadHM, SaveHM, get_max_defined_degree};
 use crate::lattice::{join, meet, JoinSemilattice, MeetSemilattice, Lattice};
 
 //#[derive(Clone)]
@@ -140,6 +140,7 @@ impl AdamsMultiplication {
             }
 
             let (s,t) = cur_deg.into();
+            eprintln!("Extending to degree {}", cur_deg);
 
             #[cfg(not(feature = "concurrent"))]
             self.resolution.compute_through_bidegree(s, t);
@@ -161,7 +162,7 @@ impl AdamsMultiplication {
         Ok(())
     }
 
-    pub fn new(res_file_name: String, res_data_directory: String, multiplication_data_directory: String, max_s: u32, max_t: i32) -> error::Result<AdamsMultiplication> {
+    pub fn new(res_file_name: String, res_data_directory: String, multiplication_data_directory: String) -> error::Result<AdamsMultiplication> {
         let save_path = Path::new(&res_file_name);
         //let mut res_opt: Result<Resolution<CCC>,Error> = error::from_string("could not construct module");
         let res_opt;
@@ -177,7 +178,8 @@ impl AdamsMultiplication {
         // Nvm the following, we're going to move into the Arc here now
         // borrow here so we still own the resolution at res_no_arc
         //let res_arc = Arc::new(res);
-    
+        
+        /*
         let save_file: File = File::create(save_path)?;
     
         #[cfg(not(feature = "concurrent"))]
@@ -198,6 +200,10 @@ impl AdamsMultiplication {
         for (s,_n,t) in res.iter_stem() {
             num_gens.insert((s,t).into(), res.number_of_gens_in_bidegree(s,t));
         }
+        */
+        // this is actually pretty bad as a method, but oh well. TODO
+        let (max_s, max_t) = get_max_defined_degree(res.clone());
+        eprintln!("max degree detected: ({}, {})", max_s, max_t);
         
         let result = AdamsMultiplication {
             resolution: res,
@@ -216,6 +222,7 @@ impl AdamsMultiplication {
         };
 
         result.ensure_multiplication_data_directory_exists()?;
+        result.ensure_resolution_data_directory_exists()?;
 
         Ok(result)
     }

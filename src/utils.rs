@@ -8,6 +8,12 @@ use saveload::{Save, Load};
 
 use std::io::{Read, Write};
 use std::io;
+use std::sync::Arc;
+
+
+use ext::CCC;
+use ext::chain_complex::{ChainComplex, FreeChainComplex, ChainHomotopy};
+use ext::resolution::Resolution;
 
 use std::collections::HashMap;
 
@@ -18,6 +24,17 @@ pub fn subspace_to_global(subspace: &Subspace, vec: &FpVector) -> FpVector {
     result
 }
 
+pub fn get_max_defined_degree(res: Arc<Resolution<CCC>>) -> (u32, i32) {
+    let mut s = 0;
+    let mut t = 0;
+    while res.has_computed_bidegree(s+1, t) {
+        s += 1;
+    }
+    while res.has_computed_bidegree(s, t+1) {
+        t += 1;
+    }
+    (s,t)
+}
 
 #[derive(Clone, Debug)]
 pub struct AllVectorsIterator {
