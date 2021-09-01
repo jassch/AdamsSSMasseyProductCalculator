@@ -271,7 +271,8 @@ impl AdamsMultiplication {
     }
 
     pub fn adams_gen_to_resoln_hom(&self, g: AdamsGenerator) -> 
-        Result<ResolutionHomomorphism<Resolution<CCC>,Resolution<CCC>>, String> {
+        Result<ResolutionHomomorphism<Resolution<CCC>,Resolution<CCC>>, String> 
+    {
         let (s,t,idx) = g.into();
         let hom = ResolutionHomomorphism::new(
             format!("({},{},{})", s, t, idx),
@@ -285,6 +286,23 @@ impl AdamsMultiplication {
         matrix[idx].set_entry(0, 1);
         hom.extend_step(s, t, Some(&matrix));
         Ok(hom)
+    }
+
+    pub fn try_load_resoln_hom_for_adams_gen(&self, g: AdamsGenerator) -> 
+        io::Result<Option<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>>>
+    {
+        let path = self.multiplication_hom_file_path(g);
+        
+        if path.exists() {
+            let mut file = File::open(path)?;
+            let res_hom = <ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>> as Load>
+                ::load(&mut file, &(self.resolution, self.resolution, ()))?;
+            let hm: HashMap<Bidegree, Matrix> = LoadHM::load(&mut file, &((), self.prime()))?.into();
+            Ok(Some((max_deg, hm)))
+        } else {
+            // this is actually fine though
+            Ok(None)
+        }
     }
 
     pub fn adams_elt_to_resoln_hom(&self, e: &AdamsElement) -> ResolutionHomomorphism<Resolution<CCC>,Resolution<CCC>> {
@@ -315,6 +333,17 @@ impl AdamsMultiplication {
                 .collect();
         path
     }
+
+    fn multiplication_hom_file_name(g: AdamsGenerator) -> String {
+        format!("mult_s{}_t{}_{}_homomorphism.data", g.s(), g.t(), g.idx())
+    }
+    fn multiplication_hom_file_path(&self, g:AdamsGenerator) -> PathBuf {
+        let path: PathBuf = 
+            [self.multiplication_data_directory.clone(), Self::multiplication_hom_file_name(g)]
+                .iter()
+                .collect();
+        path
+    }
     
     fn resolution_file_name(deg: Bidegree) -> String {
         format!("S_2_resolution_s{}_t{}.data", deg.s(), deg.t())
@@ -327,6 +356,8 @@ impl AdamsMultiplication {
                 .collect();
         path
     }
+
+
 
     pub fn load_multiplications_for(&self, g: AdamsGenerator) 
         -> io::Result<Option<(Bidegree, HashMap<Bidegree, Matrix>)>> {
