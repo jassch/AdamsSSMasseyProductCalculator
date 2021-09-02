@@ -66,9 +66,9 @@ impl Save for AdamsMultiplication {
 
 
 fn main() -> error::Result {
-    let save_file_name = String::from("S_2_resolution.data");
-    let resolution_saves_directory = String::from("S_2_resolution_incremental_data");
-    let multiplication_data_directory = String::from("S_2_multiplication_data");
+    let save_file_name = String::from("../massey-prod-calc-data/S_2_resolution.data");
+    let resolution_saves_directory = String::from("../massey-prod-calc-data/S_2_resolution_incremental_data");
+    let multiplication_data_directory = String::from("../massey-prod-calc-data/S_2_multiplication_data");
     
     let max_s=30;
     let max_t=90;

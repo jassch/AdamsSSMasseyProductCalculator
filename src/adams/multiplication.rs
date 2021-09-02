@@ -297,8 +297,7 @@ impl AdamsMultiplication {
             let mut file = File::open(path)?;
             let res_hom = <ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>> as Load>
                 ::load(&mut file, &(self.resolution, self.resolution, ()))?;
-            let hm: HashMap<Bidegree, Matrix> = LoadHM::load(&mut file, &((), self.prime()))?.into();
-            Ok(Some((max_deg, hm)))
+            Ok(Some(res_hom))
         } else {
             // this is actually fine though
             Ok(None)
