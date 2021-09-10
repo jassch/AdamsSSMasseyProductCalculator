@@ -70,8 +70,8 @@ fn main() -> error::Result {
     let resolution_saves_directory = String::from("../massey-prod-calc-data/S_2_resolution_incremental_data");
     let multiplication_data_directory = String::from("../massey-prod-calc-data/S_2_multiplication_data");
     
-    let max_s=30;
-    let max_t=90;
+    let max_s=33;
+    let max_t=99;
     //let mult_max_s=15;
     //let mult_max_t=30;
     //let mult_with_max_s=15;

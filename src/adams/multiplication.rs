@@ -1,18 +1,18 @@
 
-use std::cmp::min;
+//use std::cmp::min;
 use std::io::Write;
 use std::fs::{File, DirBuilder};
 
-use std::error::Error;
+//use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::clone::Clone;
 use std::collections::hash_map::HashMap;
 
 use algebra::module::homomorphism::ModuleHomomorphism;
-use algebra::module::{Module};
+//use algebra::module::{Module};
 
-use ext::chain_complex::{ChainComplex, FreeChainComplex, ChainHomotopy};
+use ext::chain_complex::{ChainComplex, ChainHomotopy};
 use ext::CCC;
 use ext::resolution_homomorphism::ResolutionHomomorphism;
 use ext::resolution::Resolution;
@@ -29,7 +29,7 @@ use saveload::{Save, Load};
 use super::{Bidegree, AdamsElement, AdamsGenerator};
 
 use crate::utils::{AllVectorsIterator, LoadHM, SaveHM, get_max_defined_degree};
-use crate::lattice::{join, meet, JoinSemilattice, MeetSemilattice, Lattice};
+use crate::lattice::{JoinSemilattice, MeetSemilattice};
 
 //#[derive(Clone)]
 pub struct AdamsMultiplication {
@@ -159,6 +159,9 @@ impl AdamsMultiplication {
         let file: File = File::create(&self.res_file_name)?;
         let mut buf_file = std::io::BufWriter::new(file);
         self.resolution.save(&mut buf_file)?;
+        // update max degree
+        self.max_s = deg.s;
+        self.max_t = deg.t;
         Ok(())
     }
 
@@ -296,12 +299,21 @@ impl AdamsMultiplication {
         if path.exists() {
             let mut file = File::open(path)?;
             let res_hom = <ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>> as Load>
-                ::load(&mut file, &(self.resolution, self.resolution, ()))?;
+                ::load(&mut file, &(self.resolution.clone(), self.resolution.clone()))?;
             Ok(Some(res_hom))
         } else {
             // this is actually fine though
             Ok(None)
         }
+    }
+
+    pub fn save_resoln_hom_for_adams_gen(&self, g: AdamsGenerator, 
+        res_hom: &ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>) 
+        -> io::Result<()>
+    {
+        let path = self.multiplication_hom_file_path(g);
+        let mut file = File::create(path)?;
+        res_hom.save(&mut file)
     }
 
     pub fn adams_elt_to_resoln_hom(&self, e: &AdamsElement) -> ResolutionHomomorphism<Resolution<CCC>,Resolution<CCC>> {
@@ -421,8 +433,18 @@ impl AdamsMultiplication {
         } else {
             actual_rmax
         };
-
-        let hom = self.adams_gen_to_resoln_hom(g)?;
+        let hom = match self.try_load_resoln_hom_for_adams_gen(g) {
+            Ok(Some(hom)) => hom,
+            Err(_err) => {
+                // ignore io error and recompute 
+                // TODO
+                self.adams_gen_to_resoln_hom(g)?
+            },
+            // file not found, definitely recompute
+            Ok(None) => {
+                self.adams_gen_to_resoln_hom(g)?
+            },
+        };
 
         let (compute_to_s, compute_to_t) = compute_to.into();
 
@@ -434,27 +456,31 @@ impl AdamsMultiplication {
             compute_to_t+t
         );
         
-        /*
-        #[cfg(not(feature = "concurrent"))]
-        hom.extend_all();
-        */
 
         #[cfg(feature = "concurrent")]
-        let bucket = ext::utils::query_bucket();
+        {
+            let bucket = ext::utils::query_bucket();
+            hom.extend_concurrent(
+                compute_to_s+s, 
+                compute_to_t+t, 
+                &bucket);
+        }
 
-        
-        #[cfg(feature = "concurrent")]
-        hom.extend_concurrent(
-            compute_to_s+s, 
-            compute_to_t+t, 
-            &bucket);
-        /*
-        #[cfg(feature = "concurrent")]
-        hom.extend_all_concurrent(
-            &bucket);
-        */
+        // hom has been extended
+        // save the hom first
+        match self.save_resoln_hom_for_adams_gen(g, &hom) {
+            Ok(()) => (),
+            Err(err) => { 
+                eprintln!(
+                    "Failed to save resolution homomorphism for generator {}.\nError: {}", 
+                    g,
+                    err
+                );
+            }
+        };
 
-        // hom has been extended, read off and insert the multiplication matrices
+        // then read off and insert the multiplication matrices
+
 
         // ok let's do the proper multiplications
         for rhs in compute_to.iter_s_t() { 
