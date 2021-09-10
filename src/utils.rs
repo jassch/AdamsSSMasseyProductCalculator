@@ -9,10 +9,10 @@ use saveload::{Save, Load};
 use std::io::{Read, Write};
 use std::io;
 use std::sync::Arc;
-
+use std::hash::Hash;
 
 use ext::CCC;
-use ext::chain_complex::{ChainComplex, FreeChainComplex, ChainHomotopy};
+use ext::chain_complex::{ChainComplex};
 use ext::resolution::Resolution;
 
 use std::collections::HashMap;
@@ -134,13 +134,17 @@ impl <K, V> From<LoadHM<K, V>> for HashMap<K,V> {
     }
 }
 
-impl<K: Load, V: Load> Load for LoadHM<K, V> {
+impl<K: Load + Eq + Hash, V: Load> Load for LoadHM<K, V> {
     type AuxData = (K::AuxData, V::AuxData);
     fn load(buffer: &mut impl Read, data: &Self::AuxData) -> io::Result<Self> {
         let len = usize::load(buffer, &())?;
 
         let mut result: HashMap<K, V> = HashMap::new();
-
+        for _idx in 0..len {
+            let k = K::load(buffer, &(*data).0)?;
+            let v = V::load(buffer, &(*data).1)?;
+            result.insert(k,v);
+        }
         Ok(LoadHM(result))
     }
 }
