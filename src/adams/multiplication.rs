@@ -29,7 +29,7 @@ use saveload::{Save, Load};
 use super::{Bidegree, AdamsElement, AdamsGenerator};
 
 use crate::utils::{AllVectorsIterator, LoadHM, SaveHM, get_max_defined_degree};
-use crate::lattice::{JoinSemilattice, MeetSemilattice};
+use crate::lattice::{JoinSemilattice, MeetSemilattice, join, meet};
 
 //#[derive(Clone)]
 pub struct AdamsMultiplication {
@@ -590,105 +590,6 @@ impl AdamsMultiplication {
         Ok(())
     }
 
-    /*
-    pub fn compute_multiplications(self: &mut Self, mult_max_s:u32, mult_max_t:i32, mult_with_max_s:u32, mult_with_max_t:i32) {
-        let mult_max_s = min(mult_max_s, self.max_s);
-        let mult_max_t = min(mult_max_t, self.max_t);
-
-        let res=&self.resolution; // convenience alias
-        
-        for i in 0..mult_max_s+1 {
-            let module = res.module(i); // ith free module
-            for j in 0..mult_max_t+1 {
-                let gens = &module.gen_names()[j];
-                for (idx,g) in gens.iter().enumerate() {
-                    // get the hom for the corresponding
-                    // generator
-                    // lift map dual to g, F_i -> FF_2
-                    let adams_gen: AdamsGenerator = (i, j, idx).into();
-                    let hom = 
-                        ResolutionHomomorphism::new(
-                            format!("mult-by-{}",g),
-                            res.clone(),
-                            res.clone(),
-                            i, // s
-                            j  // t
-                        );
-                    // matrix defining the first hom
-                    let ngens = module.number_of_gens_in_degree(j);
-                    let mut matrix = Matrix::new(
-                        res.prime(),
-                        ngens,
-                        1
-                    );
-                    //assert_eq!(matrix.rows(), ngens);
-                    //assert_eq!(matrix.columns(), 1);
-                    
-                    matrix[idx].set_entry(0,1);
-                    // should send the generator to 1
-                    // and everything else to 0
-                    hom.extend_step(i, j, Some(&matrix));
-                    // give it the first map
-
-                    let domain_max_s = min(i+mult_with_max_s,self.max_s);
-                    let domain_max_t = min(j+mult_with_max_t,self.max_t);
-
-                    let (mr_s, mr_t) = (domain_max_s-i, domain_max_t-j);
-                    let mult_range_bidegree = (mr_s, mr_t).into();
-
-                    // extend hom            
-                    #[cfg(not(feature = "concurrent"))]
-                    hom.extend(
-                        domain_max_s, 
-                        domain_max_t
-                    );
-
-                    #[cfg(feature = "concurrent")]
-                    hom.extend_concurrent(
-                        domain_max_s, 
-                        domain_max_t, 
-                        &bucket);
-                    
-
-                    self.multiplication_range_computed.insert(adams_gen, mult_range_bidegree);
-
-                    let mut matrix_hashmap: HashMap<Bidegree, Matrix> = HashMap::new();
-
-                    // ok let's do the proper multiplications
-                    for i2 in 0..mr_s+1 {
-                        //let module2 = res.module(i2); // ith free module
-                        for j2 in 0..mr_t+1 {
-                            if !res.has_computed_bidegree(i+i2, j+j2) {
-                                continue; 
-                            }
-                            if res.number_of_gens_in_bidegree(i+i2,j+j2)==0 {
-                                continue; // nothing in codomain, multiplication is trivially 0
-                            }
-                            //let gens2 = &module2.gen_names()[j2];
-                            let matrix = hom.get_map(i+i2).hom_k(j2);
-
-                            // convert to fp::matrix::Matrix and store
-                            matrix_hashmap.insert((i2,j2).into(), Matrix::from_vec(res.prime(), &matrix));
-
-                            /*
-                            for (idx2,g2) in gens2.iter().enumerate() {
-                                print!("{} in ({},{}) * {} in ({},{}) = ", g, i, j, g2, i2, j2);
-                                if matrix[idx2].len() == 0  {
-                                    println!("0 (trivial)");
-                                } else {
-                                    println!("{:?} in ({},{})", matrix[idx2], i+i2, j+j2);
-                                }
-                            }
-                            */
-                        }
-                    }
-                    self.multiplication_matrices.insert((i,j,idx).into(), (mult_range_bidegree, matrix_hashmap));
-                }
-            }
-        }
-    }
-    */
-
     /// only uses the dimensions, none of the multiplicative structure
     pub fn possible_nontrivial_massey_products(self: &Self) {
         let mut count = 0;
@@ -940,9 +841,142 @@ impl AdamsMultiplication {
         Ok(indet)
     }
 
+    /// computes the maximum degree through which multiplication with an adams element is defined
+    /// expects the adams generator to be valid
+    pub fn multiplication_computed_through_degree(&self, gen: AdamsGenerator) -> Option<Bidegree> {
+        match self.multiplication_matrices.get(&gen) {
+            Some((res,_)) => Some(*res),
+            None => None
+        }
+    }
+
+    /// returns maximum degree such that all multiplications with generators living in multiplier_deg 
+    /// are defined through that degree. Assumes multiplier_deg <= self.max_deg()
+    /// returns None if any prerequisites are not computed
+    pub fn multiplication_completely_computed_through_degree(&self, multiplier_deg: Bidegree) -> Option<Bidegree> {
+        let dim = match self.num_gens_bidegree(multiplier_deg) {
+            Some(n) => n,
+            None => { 
+                // bidegree dimension not even computed
+                return None; 
+            }
+        };
+        // max possible degree if all multiplications are computed
+        let mut res = (self.max_s - multiplier_deg.s(), self.max_t - multiplier_deg.t()).into();
+        for idx in 0..dim {
+            let max_for_idx = match self.multiplication_computed_through_degree((multiplier_deg, idx).into()) {
+                Some(deg) => deg,
+                None => {
+                    // multiplication with this generator not computed at all
+                    return None;
+                }
+            };
+            res = meet(res, max_for_idx);
+        }
+        Some(res)
+    }
+
+    /// computes kernels for left multiplication by all Adams elements through 
+    /// bidegree max_degree_multiplier with kernels computed through degree 
+    /// max_degree_kernel.
+    /// returns hashmap from Adams elements to pairs of a bidegree representing the maximum degree through which 
+    /// kernels are computed and a hashmap with kernels by Bidegree
+    /// if an in range pair of (nonzero) adams element and bidegree is not in the hashmaps, 
+    /// it's because the kernel is 0
+    pub fn compute_kernels_left_multiplication(&self, 
+        max_degree_multiplier: Bidegree, 
+        max_degree_kernels: Bidegree) 
+        -> Result<HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)>, String>
+    {
+        let mut kernels: HashMap<AdamsElement, (Bidegree, HashMap<Bidegree,Subspace>)> = HashMap::new();
+        for deg1 in max_degree_multiplier.iter_s_t() {
+            let dim1 = match self.num_gens_bidegree(deg1) {
+                Some(n) => n,
+                None => {
+                    return Err(format!("Bidegree {} not computed", deg1));
+                }
+            };
+            if dim1 == 0 {
+                continue;
+            }
+            for v in AllVectorsIterator::new_whole_space(self.prime(), dim1) {
+                let ae: AdamsElement = (deg1,v).into();
+                let mut hm = HashMap::new();
+                let max_mult_with_deg = match self.multiplication_completely_computed_through_degree(deg1) {
+                    Some(md) => md,
+                    None => {
+                        return Err(format!("Multiplication not completely computed for bidegree {}", deg1));
+                    }
+                };
+                let max_deg_for_kernels = meet(max_degree_kernels, max_mult_with_deg);
+                for deg2 in max_deg_for_kernels.iter_s_t() {
+                    let deg3 = deg1 + deg2;
+                    let dim2 = match self.num_gens_bidegree(deg2) {
+                        Some(n) => n,
+                        None => { 
+                            // not computed. this shouldn't happen
+                            return Err(format!("Trying to compute kernel for {}.\nExpected multiply with degree {} to be computed", ae, deg2)); 
+                        } 
+                    };
+                    if dim2 == 0 {
+                        continue; // no nonzero vectors, kernel is trivial
+                    }
+                    let dim3 = match self.num_gens_bidegree(deg3) {
+                        Some(n) => n,
+                        None => { 
+                            // not computed. this shouldn't happen
+                            return Err(format!("Trying to compute kernel for {}.\nExpected product degree {} to be computed", ae, deg3)); 
+                        } 
+                    };
+                    if dim3 == 0 {
+                        // kernel is everything
+                        // add and skip
+                        hm.insert(deg2, Subspace::entire_space(self.prime(), dim2));
+                        continue; 
+                    }
+                    let lmul_v1 = match self.left_multiplication_by(deg1, ae.vec(), deg2) {
+                        Ok(m) => m,
+                        Err(_) => {
+                            continue;
+                        }
+                    };
+                    let (aug_start, mut lmul_v1_aug) = Matrix::augmented_from_vec(self.prime(), &lmul_v1.to_vec());
+                    lmul_v1_aug.row_reduce();
+                    let kernel_lmul_v1 = lmul_v1_aug.compute_kernel(aug_start);
+                    if kernel_lmul_v1.dimension() == 0 {
+                        // kernel trival
+                        continue; // skip
+                    }
+                    hm.insert(deg2, kernel_lmul_v1);
+                }
+
+                kernels.insert(ae, (max_deg_for_kernels, hm));
+            }
+        }
+        Ok(kernels)
+    }
+    /// computes kernels for right multiplication by all Adams elements through 
+    /// bidegree max_degree_multiplier with kernels computed through degree 
+    /// max_degree_kernel
+    /// 
+    /// currently implemented by just calling the compute_kernels_left_multiplication method
+    pub fn compute_kernels_right_multiplication(&self, 
+        max_degree_multiplier: Bidegree, 
+        max_degree_kernels: Bidegree) 
+        -> Result<HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)>, String>
+    {
+        // TODO right now we're going to assume multiplication is commutative, since we're working with
+        // Adams SS for sphere at p=2. 
+        self.compute_kernels_left_multiplication(max_degree_multiplier, max_degree_kernels)
+    }
+
+    pub fn compute_massey_products(&self, max_massey: Bidegree) {
+        
+    }
+
     /// compute all massey products of massey-productable triples (a,b,c)  
     /// all of whose bidegrees are less than max_massey
-    pub fn brute_force_compute_all_massey_products(self: &Self, max_massey: Bidegree) {
+    pub fn brute_force_compute_all_massey_products(&self, max_massey: Bidegree) {
         let mut zero_massey_output = match File::create("zero-massey-prods.txt") {
             Err(error) => { eprintln!("Could not open 'zero-massey-prods.txt' for writing: {}", error); return; }
             Ok(file) => file

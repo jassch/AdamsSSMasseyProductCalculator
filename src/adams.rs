@@ -13,7 +13,9 @@ use std::cmp::{PartialOrd, Ordering};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
-use crate::lattice::{JoinSemilattice, MeetSemilattice, Lattice, meet, join};
+use std::ops::{Add, AddAssign};
+
+use crate::lattice::{JoinSemilattice, MeetSemilattice, meet, join};
 
 pub use element::AdamsElement;
 pub use generator::AdamsGenerator;
@@ -191,6 +193,24 @@ impl Display for Bidegree {
     }
 }
 
+impl Add for Bidegree {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            s: self.s + other.s,
+            t: self.t + other.t,
+        }
+    }
+}
+impl AddAssign for Bidegree {
+    fn add_assign(&mut self, other: Self) {
+        self.s += other.s;
+        self.t += other.t;
+    }
+}
+
+
 impl From<(u32,i32)> for Bidegree {
     fn from(tuple: (u32, i32)) -> Self {
         Self::new(tuple.0, tuple.1)
@@ -252,5 +272,3 @@ impl JoinSemilattice for Bidegree {
         }
     }
 }
-
-impl Lattice for Bidegree {}

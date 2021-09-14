@@ -37,8 +37,8 @@ impl AdamsElement {
     pub fn n(&self) -> i32 {
         self.t-self.s as i32
     }
-    pub fn vec(&self) -> FpVector {
-        self.vec.clone()
+    pub fn vec(&self) -> &FpVector {
+        &self.vec
     }
     pub fn new(s: u32, t: i32, vec: FpVector) -> AdamsElement {
         AdamsElement {
