@@ -60,11 +60,25 @@ impl From<(u32,i32,FpVector)> for AdamsElement {
         Self::new(tuple.0, tuple.1, tuple.2)
     }
 }
+
+impl From<(u32, i32, &FpVector)> for AdamsElement {
+    fn from(tuple: (u32, i32, &FpVector)) -> Self {
+        Self::new(tuple.0, tuple.1, tuple.2.clone())
+    }
+}
+
 impl From<(Bidegree,FpVector)> for AdamsElement {
     fn from(tuple: (Bidegree, FpVector)) -> Self {
-        let (deg, idx) = tuple;
+        let (deg, v) = tuple;
         let (s, t) = deg.into();
-        Self::new(s, t, idx)
+        Self::new(s, t, v)
+    }
+}
+impl From<(Bidegree,&FpVector)> for AdamsElement {
+    fn from(tuple: (Bidegree, &FpVector)) -> Self {
+        let (deg, v) = tuple;
+        let (s, t) = deg.into();
+        Self::new(s, t, v.clone())
     }
 }
 
@@ -73,8 +87,8 @@ impl From<AdamsElement> for (u32,i32,FpVector) {
         (elt.s, elt.t, elt.vec) // taken by move, so move out
     }
 }
-impl From<&AdamsElement> for (u32,i32,FpVector) {
-    fn from(elt: &AdamsElement) -> Self {
+impl <'a> From<&'a AdamsElement> for (u32, i32, &'a FpVector) {
+    fn from(elt: &'a AdamsElement) -> Self {
         (elt.s(), elt.t(), elt.vec()) // use method .vec() to avoid moving
     }
 }

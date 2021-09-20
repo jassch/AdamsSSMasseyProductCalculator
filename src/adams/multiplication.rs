@@ -56,8 +56,11 @@ pub struct AdamsMultiplication {
     /// it's not great. We'll have to see how we can make this more efficient
     /// possibly need to go in to ext and add Save/Load to resolution homomorphisms
     multiplication_data_directory: String,
+    /// hash map to store known (multiplicative) decompositions of elements
     known_decompositions:
-        HashMap<AdamsElement, Vec<(AdamsElement, AdamsElement)>>
+        HashMap<AdamsElement, Vec<(AdamsElement, AdamsElement)>>,
+    /// directory to store massey product outputs
+    massey_product_data_directory: String,
 }
 
 
@@ -165,7 +168,7 @@ impl AdamsMultiplication {
         Ok(())
     }
 
-    pub fn new(res_file_name: String, res_data_directory: String, multiplication_data_directory: String) -> error::Result<AdamsMultiplication> {
+    pub fn new(res_file_name: String, res_data_directory: String, multiplication_data_directory: String, massey_product_data_directory: String) -> error::Result<AdamsMultiplication> {
         let save_path = Path::new(&res_file_name);
         //let mut res_opt: Result<Resolution<CCC>,Error> = error::from_string("could not construct module");
         let res_opt;
@@ -222,6 +225,7 @@ impl AdamsMultiplication {
             multiplication_data_directory,
             known_decompositions:
                 HashMap::new(),
+            massey_product_data_directory,
         };
 
         result.ensure_multiplication_data_directory_exists()?;
@@ -876,6 +880,74 @@ impl AdamsMultiplication {
         Some(res)
     }
 
+    /// compute kernels for left multiplication by the given AdamsElement through the given Bidegree
+    pub fn compute_kernels_left_multiplication(&self,
+        multiplier: &AdamsElement,
+        max_degree_kernels: Bidegree) 
+        -> Result<(Bidegree, HashMap<Bidegree, Subspace>), String> 
+    {
+        let deg1 = multiplier.degree();
+        let mut hm = HashMap::new();
+        let max_mult_with_deg = match self.multiplication_completely_computed_through_degree(deg1) {
+            Some(md) => md,
+            None => {
+                return Err(format!("Multiplication not completely computed for bidegree {}", deg1));
+            }
+        };
+        let max_deg_for_kernels = meet(max_degree_kernels, max_mult_with_deg);
+        for deg2 in max_deg_for_kernels.iter_s_t() {
+            let deg3 = deg1 + deg2;
+            let dim2 = match self.num_gens_bidegree(deg2) {
+                Some(n) => n,
+                None => { 
+                    // not computed. this shouldn't happen
+                    return Err(format!("Trying to compute kernel for {}.\nExpected multiply with degree {} to be computed", multiplier, deg2)); 
+                } 
+            };
+            if dim2 == 0 {
+                continue; // no nonzero vectors, kernel is trivial
+            }
+            let dim3 = match self.num_gens_bidegree(deg3) {
+                Some(n) => n,
+                None => { 
+                    // not computed. this shouldn't happen
+                    return Err(format!("Trying to compute kernel for {}.\nExpected product degree {} to be computed", multiplier, deg3)); 
+                } 
+            };
+            if dim3 == 0 {
+                // kernel is everything
+                // add and skip
+                hm.insert(deg2, Subspace::entire_space(self.prime(), dim2));
+                continue; 
+            }
+            let lmul_v1 = match self.left_multiplication_by(deg1, multiplier.vec(), deg2) {
+                Ok(m) => m,
+                Err(_) => {
+                    continue;
+                }
+            };
+            let (aug_start, mut lmul_v1_aug) = Matrix::augmented_from_vec(self.prime(), &lmul_v1.to_vec());
+            lmul_v1_aug.row_reduce();
+            let kernel_lmul_v1 = lmul_v1_aug.compute_kernel(aug_start);
+            if kernel_lmul_v1.dimension() == 0 {
+                // kernel trival
+                continue; // skip
+            }
+            hm.insert(deg2, kernel_lmul_v1);
+        }
+        Ok((max_deg_for_kernels, hm))
+    }
+    
+    /// computes kernels for right multiplication by the given Adams element through the given bidegree
+    /// redirects to compute_kernels_left_multiplication right now. TODO
+    pub fn compute_kernels_right_multiplication(&self,
+        multiplier: &AdamsElement,
+        max_degree_kernels: Bidegree) 
+        -> Result<(Bidegree, HashMap<Bidegree, Subspace>), String> 
+    {
+        self.compute_kernels_left_multiplication(multiplier, max_degree_kernels)
+    }
+
     /// computes kernels for left multiplication by all Adams elements through 
     /// bidegree max_degree_multiplier with kernels computed through degree 
     /// max_degree_kernel.
@@ -883,7 +955,7 @@ impl AdamsMultiplication {
     /// kernels are computed and a hashmap with kernels by Bidegree
     /// if an in range pair of (nonzero) adams element and bidegree is not in the hashmaps, 
     /// it's because the kernel is 0
-    pub fn compute_kernels_left_multiplication(&self, 
+    pub fn compute_all_kernels_left_multiplication(&self, 
         max_degree_multiplier: Bidegree, 
         max_degree_kernels: Bidegree) 
         -> Result<HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)>, String>
@@ -900,57 +972,10 @@ impl AdamsMultiplication {
                 continue;
             }
             for v in AllVectorsIterator::new_whole_space(self.prime(), dim1) {
-                let ae: AdamsElement = (deg1,v).into();
-                let mut hm = HashMap::new();
-                let max_mult_with_deg = match self.multiplication_completely_computed_through_degree(deg1) {
-                    Some(md) => md,
-                    None => {
-                        return Err(format!("Multiplication not completely computed for bidegree {}", deg1));
-                    }
-                };
-                let max_deg_for_kernels = meet(max_degree_kernels, max_mult_with_deg);
-                for deg2 in max_deg_for_kernels.iter_s_t() {
-                    let deg3 = deg1 + deg2;
-                    let dim2 = match self.num_gens_bidegree(deg2) {
-                        Some(n) => n,
-                        None => { 
-                            // not computed. this shouldn't happen
-                            return Err(format!("Trying to compute kernel for {}.\nExpected multiply with degree {} to be computed", ae, deg2)); 
-                        } 
-                    };
-                    if dim2 == 0 {
-                        continue; // no nonzero vectors, kernel is trivial
-                    }
-                    let dim3 = match self.num_gens_bidegree(deg3) {
-                        Some(n) => n,
-                        None => { 
-                            // not computed. this shouldn't happen
-                            return Err(format!("Trying to compute kernel for {}.\nExpected product degree {} to be computed", ae, deg3)); 
-                        } 
-                    };
-                    if dim3 == 0 {
-                        // kernel is everything
-                        // add and skip
-                        hm.insert(deg2, Subspace::entire_space(self.prime(), dim2));
-                        continue; 
-                    }
-                    let lmul_v1 = match self.left_multiplication_by(deg1, ae.vec(), deg2) {
-                        Ok(m) => m,
-                        Err(_) => {
-                            continue;
-                        }
-                    };
-                    let (aug_start, mut lmul_v1_aug) = Matrix::augmented_from_vec(self.prime(), &lmul_v1.to_vec());
-                    lmul_v1_aug.row_reduce();
-                    let kernel_lmul_v1 = lmul_v1_aug.compute_kernel(aug_start);
-                    if kernel_lmul_v1.dimension() == 0 {
-                        // kernel trival
-                        continue; // skip
-                    }
-                    hm.insert(deg2, kernel_lmul_v1);
-                }
+                let ae = AdamsElement::from((deg1, v));
+                let kers = self.compute_kernels_left_multiplication(&ae, max_degree_kernels)?;
 
-                kernels.insert(ae, (max_deg_for_kernels, hm));
+                kernels.insert(ae, kers);
             }
         }
         Ok(kernels)
@@ -960,19 +985,167 @@ impl AdamsMultiplication {
     /// max_degree_kernel
     /// 
     /// currently implemented by just calling the compute_kernels_left_multiplication method
-    pub fn compute_kernels_right_multiplication(&self, 
+    pub fn compute_all_kernels_right_multiplication(&self, 
         max_degree_multiplier: Bidegree, 
         max_degree_kernels: Bidegree) 
         -> Result<HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)>, String>
     {
         // TODO right now we're going to assume multiplication is commutative, since we're working with
         // Adams SS for sphere at p=2. 
-        self.compute_kernels_left_multiplication(max_degree_multiplier, max_degree_kernels)
+        self.compute_all_kernels_left_multiplication(max_degree_multiplier, max_degree_kernels)
     }
 
+    /// Write a new function to compute the massey products <a,b,c> given 
+    /// b and c for a less than max_deg_a. 
+    /// 
+    /// Should only compute one homotopy. Assumes bc=0.
+    /// 
+    /// Returns the maximum a degree through which Massey products were computed, as well as 
+    /// a Vector of triples (a, representative, subspace) for which the massey product does not 
+    /// contain 0. Any possible massey product in the range indicated by the bidegree which is not
+    /// recorded contains 0.
+    /// 
+    /// takes the kernels for right multiplication by b as an argument
+    pub fn compute_massey_prods_for_pair(&self, 
+        kernels_mul_b: &(Bidegree, HashMap<Bidegree, Subspace>), 
+        max_deg_a: Bidegree, 
+        b: &AdamsElement, 
+        c: &AdamsElement) 
+        -> (Bidegree, Vec<(AdamsElement, FpVector, Subspace)>)
+    {
+        let mut ans = vec![];
+        let (kernels_max_deg, ker_map) = kernels_mul_b;
+        let b_deg = b.degree();
+        let c_deg = c.degree();
+        let b_c_deg = b_deg + c_deg;
+        let b_c_shift = match b_c_deg.try_subtract((1,0).into()) {
+            Some(shift) => shift, // this is the degree difference |<a,b,c>| - |a|
+            None => {
+                return ((0,0).into(), ans); // return empty data structure.
+                // this only happens if b and c have s degree 0, and therefore are either 0 or 1,
+                // which have no interesting massey products
+            }
+        };
+        // the extra 1 in s degree is due to massey product living in degree deg_a + deg_b + deg_c - (1,0)
+        let complement = match (self.max_deg() + (1,0).into()).try_subtract(b_c_deg) {
+            Some(cmpl) => cmpl,
+            None => {
+                return ((0,0).into(), ans); // return empty data structure, since there are no valid a's to multiply with anyway
+            }
+        };
+        // complement represents maximum possible a degree we can compute with
+        let max_a = max_deg_a.meet(complement).meet(*kernels_max_deg); // intersect the ranges
+
+        let (max_s1, max_t1) = max_a.into();
+        let (s2,t2,v2) = b.into();
+        let (s3,t3,v3) = c.into();
+        let (max_shift_s,max_shift_t) = (max_s1+s2-1, max_t1+t2); // largest degree increase from c to <a,b,c>
+        //let shift_n = shift_t-shift_s as i32;
+        let (max_tot_s, max_tot_t) = (max_shift_s+s3, max_shift_t+t3); // largest total degree of <a,b,c>
+        //let tot_n = tot_t-tot_s as i32;
+
+        // for now we'll just compute the resolutions for b and c
+        // this can be computed in terms of cached data in principle, and it should be faster,
+        // but it requires a change to Hood's library
+        let res_hom_2 = self.adams_elt_to_resoln_hom(b);
+        res_hom_2.extend(max_shift_s, max_shift_t); // TODO concurrentify
+        let res_hom_3 = self.adams_elt_to_resoln_hom(c);
+        res_hom_3.extend(max_tot_s, max_tot_t); // TODO concurrentify
+
+
+        let homotopy = ChainHomotopy::new(
+            &*self.resolution,
+            &*self.resolution,
+            s2+s3,
+            t2+t3,
+            |source_s, source_t, idx, row| {
+                let mid_s = source_s - s3;
+
+                // ought to represent res_hom_2 \circ res_hom_3, which makes sense
+                res_hom_3.get_map(source_s)
+                    .compose(res_hom_2.get_map(mid_s))
+                    .apply_to_basis_element(row.as_slice_mut(), 1, source_t, idx);
+            }
+        );
+
+        homotopy.extend(max_tot_s, max_tot_t);
+
+        // extract representatives for massey products from homotopy
+        for a_deg in max_deg_a.iter_s_t() {
+            if a_deg.n() < 0 {
+                continue;
+            }
+            let ker_b_dim_a = match ker_map.get(&a_deg) {
+                Some(subsp) => subsp,
+                None => {
+                    continue; // means that the kernel is trivial, nothing interesting here
+                }
+            };
+            let (s1, t1) = a_deg.into();
+            let tot_deg = a_deg + b_c_shift;
+            let (tot_s, tot_t) = tot_deg.into();
+            let target_dim = match self.num_gens_bidegree(tot_deg) {
+                Some(n) => n,
+                None => {
+                    eprintln!("Error, expected dimension of target for massey product <{},{},{}> to be computed", a_deg, b, c);
+                    continue; // ignore TODO
+                }
+            };
+            let htpy_map = homotopy.homotopy(tot_s);
+            for vec_a in AllVectorsIterator::new(ker_b_dim_a) {
+                if vec_a.is_zero() {
+                    continue; // trivial massey products
+                }
+                // now htpy_map
+                // goes from the free module in degree tot_s to the one in degree a_deg  
+                // need to compose with the map given by vec_a from a_deg to F2
+                // and then read off the values of the composite map 
+                // on the generators in degree tot_s, tot_t
+                let mut answer = vec![0; target_dim];
+                let mut nonzero = false;
+                for i in 0..target_dim {
+                    let output = htpy_map.output(tot_t, i);
+                    for (k, entry) in vec_a.iter().enumerate() {
+                        if entry != 0 {
+                            answer[i] += entry * output.entry(k); // TODO: might need an offset here
+                        }
+                    }
+                    if answer[i]!=0 {
+                        nonzero = true;
+                    }
+                }
+                if nonzero {
+                    let massey_rep = FpVector::from_slice(self.prime(), &answer);
+                    let ae1 = (a_deg, &vec_a).into();
+                    let indet = match self.compute_indeterminacy_of_massey_product(&ae1, b_deg, &c) {
+                        Ok(subsp) => subsp,
+                        Err(reason) => {
+                            eprintln!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
+                            s1, t1, vec_a, 
+                            s2, t2, v2, 
+                            s3, t3, v3,
+                            tot_s, tot_t, massey_rep,
+                            format!("{} could not compute indeterminacy because {}", "{??}", reason)
+                            );
+                        // hopefully this doesn't happen
+                        continue; // printed out, keep on going
+                        }
+                    };
+                    if indet.contains(massey_rep.as_slice()) {
+                        continue; // massey product is trivial, ignore it
+                    }
+                    ans.push((ae1, massey_rep, indet))
+                }
+            }
+        }
+        (max_a, ans)
+    }
+
+    /*
     pub fn compute_massey_products(&self, max_massey: Bidegree) {
         
     }
+    */
 
     /// compute all massey products of massey-productable triples (a,b,c)  
     /// all of whose bidegrees are less than max_massey

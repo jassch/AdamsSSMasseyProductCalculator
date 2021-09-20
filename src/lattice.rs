@@ -166,13 +166,13 @@ impl <T: PartialOrd> PartialOrd for WithMax<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         use self::WithMax::*;
         match self {
+            Max => match other {
+                Max => Some(Ordering::Equal),
+                From(_) => Some(Ordering::Greater),
+            }
             From(t1) => match other {
                 Max => Some(Ordering::Less),
                 From(t2) => t1.partial_cmp(t2),
-            }
-            Min => match other {
-                Max => Some(Ordering::Equal),
-                From(_) => Some(Ordering::Greater),
             }
         }
     }
@@ -220,13 +220,13 @@ impl <T: Ord> Ord for WithMax<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         use self::WithMax::*;
         match self {
+            Max => match other {
+                Max => Ordering::Equal,
+                From(_) => Ordering::Greater,
+            }
             From(t1) => match other {
                 Max => Ordering::Less,
                 From(t2) => t1.cmp(t2),
-            }
-            Min => match other {
-                Max => Ordering::Equal,
-                From(_) => Ordering::Greater,
             }
         }
     }
