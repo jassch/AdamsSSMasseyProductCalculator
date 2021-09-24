@@ -1,5 +1,6 @@
 
 use std::cmp::min;
+use std::io;
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
@@ -12,6 +13,7 @@ use ext::CCC;
 use ext::resolution_homomorphism::ResolutionHomomorphism;
 use ext::resolution::Resolution;
 use ext::utils::construct;
+use fp::vector::FpVector;
 use fp::matrix::Matrix;
 use saveload::Save;
 
@@ -78,18 +80,49 @@ fn main() -> error::Result {
     //let mult_with_max_s=15;
     //let mult_with_max_t=30;
 
+    
+    println!("Loading and extending resolution...");
     let mut adams_mult: AdamsMultiplication = AdamsMultiplication::new(save_file_name, resolution_saves_directory, multiplication_data_directory, massey_product_data_directory)?;
+    let prime = adams_mult.prime();
 
     adams_mult.extend_resolution_to((max_s,max_t).into())?;
 
     fp::vector::initialize_limb_bit_index_table(adams_mult.resolution().prime());
 
+    println!("Loading and computing multiplications...");
     match adams_mult.compute_all_multiplications() {
         Ok(_) => {},
         Err(err_info) => {
             eprintln!("{}", err_info);
         }
     }
+
+    let h0 = (1,1,FpVector::from_slice(prime, &vec![1])).into();
+    let h1 = (1,2,FpVector::from_slice(prime, &vec![1])).into();
+    let max_massey_deg = (32,96).into(); //(25,60).into();//(32, 96).into();
+    // compute Massey products 
+    // <-,h0,h1>
+    println!("Computing kernels for multiplication by h0 = {}...", h0);
+    // first compute kernels for h0
+    let kers_h0 = match adams_mult.compute_kernels_right_multiplication(&h0, max_massey_deg) {
+        Ok(kers) => kers,
+        Err(err_info) => {
+            eprintln!("{}", err_info);
+            // fail
+            return error::from_string(err_info);
+            //std::process::exit(-1);
+        }
+    };
+    println!("Computing massey products <-,{},{}>...", h0, h1);
+    let (deg_computed, massey_h0_h1) = adams_mult.compute_massey_prods_for_pair(&kers_h0, max_massey_deg, &h0, &h1);
+    println!("Massey products <-,{},{}> computed through degree {} out of {}", h0, h1, deg_computed, max_massey_deg);
+    let shift_deg = (1,3).into();
+    for (a, rep, indet) in massey_h0_h1 {
+        let rep_ae: AdamsElement = (a.degree() + shift_deg, rep).into();
+        println!("<{}, h0, h1> = {} + {}", a, rep_ae, indet.matrix);
+    }
+    
+
     //adams_mult.compute_multiplications(mult_max_s, mult_max_t, mult_with_max_s, mult_with_max_t);
     //adams_mult.brute_force_compute_all_massey_products((7,30).into());
 

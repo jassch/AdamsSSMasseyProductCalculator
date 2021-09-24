@@ -886,6 +886,7 @@ impl AdamsMultiplication {
         max_degree_kernels: Bidegree) 
         -> Result<(Bidegree, HashMap<Bidegree, Subspace>), String> 
     {
+        eprintln!("compute_kernels_left_multiplication({}, {})", multiplier, max_degree_kernels);
         let deg1 = multiplier.degree();
         let mut hm = HashMap::new();
         let max_mult_with_deg = match self.multiplication_completely_computed_through_degree(deg1) {
@@ -920,6 +921,7 @@ impl AdamsMultiplication {
                 hm.insert(deg2, Subspace::entire_space(self.prime(), dim2));
                 continue; 
             }
+            eprintln!("computing nontrivial kernel for deg: {}", deg2);
             let lmul_v1 = match self.left_multiplication_by(deg1, multiplier.vec(), deg2) {
                 Ok(m) => m,
                 Err(_) => {
@@ -945,6 +947,7 @@ impl AdamsMultiplication {
         max_degree_kernels: Bidegree) 
         -> Result<(Bidegree, HashMap<Bidegree, Subspace>), String> 
     {
+        eprintln!("compute_kernels_right_multiplication({}, {})", multiplier, max_degree_kernels);
         self.compute_kernels_left_multiplication(multiplier, max_degree_kernels)
     }
 
@@ -1013,6 +1016,7 @@ impl AdamsMultiplication {
         c: &AdamsElement) 
         -> (Bidegree, Vec<(AdamsElement, FpVector, Subspace)>)
     {
+        eprintln!("compute_massey_prods_for_pair(kernels, {}, {}, {})", max_deg_a, b, c);
         let mut ans = vec![];
         let (kernels_max_deg, ker_map) = kernels_mul_b;
         let b_deg = b.degree();
@@ -1035,24 +1039,34 @@ impl AdamsMultiplication {
         };
         // complement represents maximum possible a degree we can compute with
         let max_a = max_deg_a.meet(complement).meet(*kernels_max_deg); // intersect the ranges
+        eprintln!("determined max_a: (s,t)=({},{})", max_a.s(), max_a.t());
 
         let (max_s1, max_t1) = max_a.into();
         let (s2,t2,v2) = b.into();
         let (s3,t3,v3) = c.into();
-        let (max_shift_s,max_shift_t) = (max_s1+s2-1, max_t1+t2); // largest degree increase from c to <a,b,c>
+        // largest degree increase from c to <a,b,c>
+        let (max_shift_s,max_shift_t) = (max_s1+s2-1, max_t1+t2); 
+        eprintln!("max_shift: (s,t)=({},{})", max_shift_s, max_shift_t);
         //let shift_n = shift_t-shift_s as i32;
-        let (max_tot_s, max_tot_t) = (max_shift_s+s3, max_shift_t+t3); // largest total degree of <a,b,c>
+        // largest total degree of <a,b,c>
+        let (max_tot_s, max_tot_t) = (max_shift_s+s3, max_shift_t+t3); 
+        eprintln!("max_tot: (s,t)=({},{})", max_tot_s, max_tot_t);
+        
         //let tot_n = tot_t-tot_s as i32;
 
         // for now we'll just compute the resolutions for b and c
         // this can be computed in terms of cached data in principle, and it should be faster,
         // but it requires a change to Hood's library
+        eprint!("lifting {} to resolution homomorphism...", b);
         let res_hom_2 = self.adams_elt_to_resoln_hom(b);
         res_hom_2.extend(max_shift_s, max_shift_t); // TODO concurrentify
+        eprintln!(" done.");
+        eprint!("lifting {} to resolution homomorphism...", c);
         let res_hom_3 = self.adams_elt_to_resoln_hom(c);
         res_hom_3.extend(max_tot_s, max_tot_t); // TODO concurrentify
+        eprintln!(" done.");
 
-
+        eprint!("computing nullhomotopy of {} o {}...", b, c);
         let homotopy = ChainHomotopy::new(
             &*self.resolution,
             &*self.resolution,
@@ -1067,17 +1081,32 @@ impl AdamsMultiplication {
                     .apply_to_basis_element(row.as_slice_mut(), 1, source_t, idx);
             }
         );
+        
+        for s in b_c_deg.s()..=max_tot_s {
+            eprint!(" extend htpy to ({},{})", s, max_tot_t);
+            homotopy.extend(s, max_tot_t); 
+            // need the loop b/c extend uses stem degree
+            // i.e. extends row s to t = max_n + s
+            // so the first few rows end up too short
+        }
+        eprintln!(" done.");
 
-        homotopy.extend(max_tot_s, max_tot_t);
-
+        eprintln!("extracting massey products from homotopy...");
         // extract representatives for massey products from homotopy
         for a_deg in max_deg_a.iter_s_t() {
             if a_deg.n() < 0 {
                 continue;
             }
             let ker_b_dim_a = match ker_map.get(&a_deg) {
-                Some(subsp) => subsp,
+                Some(subsp) => {
+                    if subsp.dimension() == 0 {
+                        eprintln!("no vectors in kernel here, done. But kernel is recorded, which shouldn't happen.");
+                        continue; // kernel is trivial, nothing interesting here.
+                    }
+                    subsp
+                }
                 None => {
+                    //eprintln!("no vectors in kernel here, done.");
                     continue; // means that the kernel is trivial, nothing interesting here
                 }
             };
@@ -1091,7 +1120,14 @@ impl AdamsMultiplication {
                     continue; // ignore TODO
                 }
             };
+            if target_dim == 0 {
+                //eprintln!("target empty, done.");
+                continue;
+            }
+            eprint!("for deg {}... ", a_deg);
             let htpy_map = homotopy.homotopy(tot_s);
+            let offset_a = self.resolution.module(s1).generator_offset(t1, t1, 0); // where do generators 
+            // start in the basis after all the products and what
             for vec_a in AllVectorsIterator::new(ker_b_dim_a) {
                 if vec_a.is_zero() {
                     continue; // trivial massey products
@@ -1103,19 +1139,24 @@ impl AdamsMultiplication {
                 // on the generators in degree tot_s, tot_t
                 let mut answer = vec![0; target_dim];
                 let mut nonzero = false;
+                eprintln!(" computing for {}...", vec_a);
                 for i in 0..target_dim {
                     let output = htpy_map.output(tot_t, i);
+                    eprintln!("output of htpy for ({}, {}) index {} = {}", tot_s, tot_t, i, output);
                     for (k, entry) in vec_a.iter().enumerate() {
                         if entry != 0 {
-                            answer[i] += entry * output.entry(k); // TODO: might need an offset here
+                            //answer[i] += entry * output.entry(self.resolution.module(s1).generator_offset(t1,t1,k)); 
+                            answer[i] += entry * output.entry(offset_a + k); 
                         }
                     }
                     if answer[i]!=0 {
                         nonzero = true;
                     }
                 }
+                eprintln!(" rep for <{},-,->={:?}", vec_a, answer);
                 if nonzero {
                     let massey_rep = FpVector::from_slice(self.prime(), &answer);
+                    eprintln!(" nonzero rep for <{},-,->={}", vec_a, massey_rep);
                     let ae1 = (a_deg, &vec_a).into();
                     let indet = match self.compute_indeterminacy_of_massey_product(&ae1, b_deg, &c) {
                         Ok(subsp) => subsp,
@@ -1127,8 +1168,8 @@ impl AdamsMultiplication {
                             tot_s, tot_t, massey_rep,
                             format!("{} could not compute indeterminacy because {}", "{??}", reason)
                             );
-                        // hopefully this doesn't happen
-                        continue; // printed out, keep on going
+                            // hopefully this doesn't happen
+                            continue; // printed out, keep on going
                         }
                     };
                     if indet.contains(massey_rep.as_slice()) {
@@ -1137,6 +1178,7 @@ impl AdamsMultiplication {
                     ans.push((ae1, massey_rep, indet))
                 }
             }
+            eprintln!("done.");
         }
         (max_a, ans)
     }

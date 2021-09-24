@@ -172,7 +172,7 @@ impl Bidegree {
     /// Checks that the difference in s degrees is nonnegative. 
     /// Returns difference as a bidegree if so, otherwise returns None.
     pub fn try_subtract(&self, smaller: Bidegree) -> Option<Bidegree> {
-        if( self.s >= smaller.s ) {
+        if self.s >= smaller.s {
             Some(Bidegree {
                 s: self.s - smaller.s,
                 t: self.t - smaller.t,
