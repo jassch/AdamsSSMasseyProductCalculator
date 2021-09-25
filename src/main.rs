@@ -74,7 +74,7 @@ fn main() -> error::Result {
     let massey_product_data_directory = String::from("../massey-prod-calc-data/S_2_massey_prod_data");
 
     let max_s=33;
-    let max_t=99;
+    let max_t=105;
     //let mult_max_s=15;
     //let mult_max_t=30;
     //let mult_with_max_s=15;
@@ -99,7 +99,7 @@ fn main() -> error::Result {
 
     let h0 = (1,1,FpVector::from_slice(prime, &vec![1])).into();
     let h1 = (1,2,FpVector::from_slice(prime, &vec![1])).into();
-    let max_massey_deg = (32,96).into(); //(25,60).into();//(32, 96).into();
+    let max_massey_deg = (32,102).into(); //(25,60).into();//(32, 96).into();
     // compute Massey products 
     // <-,h0,h1>
     println!("Computing kernels for multiplication by h0 = {}...", h0);
