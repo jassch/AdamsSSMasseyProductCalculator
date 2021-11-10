@@ -2,6 +2,7 @@
 mod element;
 mod generator;
 mod multiplication;
+mod masseyproduct;
 
 use saveload::{Save, Load};
 
@@ -20,6 +21,7 @@ use crate::lattice::{JoinSemilattice, MeetSemilattice, meet, join};
 pub use element::AdamsElement;
 pub use generator::AdamsGenerator;
 pub use multiplication::AdamsMultiplication;
+pub use masseyproduct::MasseyProduct;
 
 /// type synonym for (s,t) bidegrees
 

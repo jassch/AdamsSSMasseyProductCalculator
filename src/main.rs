@@ -23,6 +23,7 @@ pub mod adams;
 use adams::{Bidegree, AdamsElement, AdamsGenerator, AdamsMultiplication};
 
 pub mod lattice;
+pub mod affinespace;
 
 //pub mod computation;
 //use computation::ComputationResult;
@@ -102,6 +103,7 @@ fn main() -> error::Result {
     let max_massey_deg = (32,102).into(); //(25,60).into();//(32, 96).into();
     // compute Massey products 
     // <-,h0,h1>
+    /*
     println!("Computing kernels for multiplication by h0 = {}...", h0);
     // first compute kernels for h0
     let kers_h0 = match adams_mult.compute_kernels_right_multiplication(&h0, max_massey_deg) {
@@ -120,6 +122,26 @@ fn main() -> error::Result {
     for (a, rep, indet) in massey_h0_h1 {
         let rep_ae: AdamsElement = (a.degree() + shift_deg, rep).into();
         println!("<{}, h0, h1> = {} + {}", a, rep_ae, indet.matrix);
+    }
+    */
+    println!("Computing kernels for multiplication by h1 = {}...", h1);
+    // first compute kernels for h0
+    let kers_h1 = match adams_mult.compute_kernels_right_multiplication(&h1, max_massey_deg) {
+        Ok(kers) => kers,
+        Err(err_info) => {
+            eprintln!("{}", err_info);
+            // fail
+            return error::from_string(err_info);
+            //std::process::exit(-1);
+        }
+    };
+    println!("Computing massey products <-,{},{}>...", h1, h0);
+    let (deg_computed, massey_h1_h0) = adams_mult.compute_massey_prods_for_pair(&kers_h1, max_massey_deg, &h1, &h0);
+    println!("Massey products <-,{},{}> computed through degree {} out of {}", h1, h0, deg_computed, max_massey_deg);
+    let shift_deg = (1,3).into();
+    for (a, rep, indet) in massey_h1_h0 {
+        let rep_ae: AdamsElement = (a.degree() + shift_deg, rep).into();
+        println!("<{}, h1, h0> = {} + {}", a, rep_ae, indet.matrix);
     }
     
 

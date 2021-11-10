@@ -24,6 +24,35 @@ pub fn subspace_to_global(subspace: &Subspace, vec: &FpVector) -> FpVector {
     result
 }
 
+pub fn subspace_sum(lsub: &Subspace, rsub: &Subspace) -> Subspace {
+    let mut indet = Subspace::new(lsub.prime(), lsub.dimension() + rsub.dimension(), lsub.ambient_dimension());
+    indet.add_vectors(
+        lsub.iter()
+            .take(lsub.dimension())
+            .cloned()
+            .chain(
+                rsub.iter()
+                    .take(rsub.dimension())
+                    .cloned()));
+    indet
+}
+
+pub fn subspace_equality(lsub: &Subspace, rsub: &Subspace) -> bool {
+    if lsub.prime() != rsub.prime() {
+        return false;
+    }
+    let p:u32 = *lsub.prime();
+    if lsub.dimension() != rsub.dimension() {
+        return false;
+    }
+    for v in lsub.basis() {
+        if !rsub.contains(v.as_slice()) {
+            return false;
+        }
+    }
+    true
+}
+
 pub fn get_max_defined_degree(res: Arc<Resolution<CCC>>) -> (u32, i32) {
     let mut s = 0;
     let mut t = 0;

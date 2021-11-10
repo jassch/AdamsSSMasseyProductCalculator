@@ -26,8 +26,9 @@ use fp::vector::FpVector;
 use std::io;
 use saveload::{Save, Load};
 
-use super::{Bidegree, AdamsElement, AdamsGenerator};
+use super::{Bidegree, AdamsElement, AdamsGenerator, MasseyProduct};
 
+use crate::utils;
 use crate::utils::{AllVectorsIterator, LoadHM, SaveHM, get_max_defined_degree};
 use crate::lattice::{JoinSemilattice, MeetSemilattice, join, meet};
 
@@ -716,11 +717,14 @@ impl AdamsMultiplication {
     }
 
     /// Indeterminacy of massey product only depends on the bidegree of the middle term.
-    pub fn compute_indeterminacy_of_massey_product(self: &Self, a: &AdamsElement, b: Bidegree, c: &AdamsElement) -> Result<Subspace, String> {
+    /// returns the pair of subspaces of  
+    /// aR, Rc in R
+    /// in the bidegree where <a,b,c> lives
+    pub fn compute_indeterminacy_of_massey_product(self: &Self, a: &AdamsElement, b: Bidegree, c: &AdamsElement) -> Result<(Subspace, Subspace), String> {
         let (s1, t1, v1) = a.into();
         let (s2, t2) = b.into();
         let (s3, t3, v3) = c.into();
-        let (s_left, t_left) = (s1 + s2 -1, t1+t2);
+        let (s_left, t_left) = (s1 + s2 -1, t1+t2); 
         let (s_right, t_right) = (s2 + s3 -1, t2+t3);
         let (s_tot, t_tot) = (s1 + s2 + s3 - 1, t1 + t2 + t3);
         let p = self.prime();
@@ -744,13 +748,10 @@ impl AdamsMultiplication {
             }
         };
 
-        if left_dim == 0 && right_dim == 0 {
-            return Ok(Subspace::empty_space(p, total_dim));
-        }
-
-        if left_dim == 0 {
-            // just compute left multiplication
-            
+        let l_indet = if right_dim == 0 {
+            Subspace::empty_space(p,total_dim)
+        } else {
+            // compute left multiplication
             // from (s_right, t_right) -> (s_tot, t_tot)
             let left_indet = match self.left_multiplication_by((s1, t1).into(), &v1, (s_right, t_right).into()) {
                 Ok(lmat) => lmat,
@@ -769,12 +770,13 @@ impl AdamsMultiplication {
             let (l_aug_start, mut l_indet_aug) = Matrix::augmented_from_vec(p, &left_indet.to_vec());
             l_indet_aug.row_reduce();
                 
-            return Ok(l_indet_aug.compute_image(left_indet.columns(), l_aug_start));
-        }
-        
-        if right_dim == 0 {
-            // just compute left multiplication
-            
+            l_indet_aug.compute_image(left_indet.columns(), l_aug_start)
+        };
+
+        let r_indet = if left_dim == 0 {
+            Subspace::empty_space(p,total_dim)
+        } else {
+            // compute left multiplication
             // from (s_right, t_right) -> (s_tot, t_tot)
             let right_indet = match self.right_multiplication_by((s3, t3).into(), &v3, (s_left, t_left).into()) {
                 Ok(rmat) => rmat,
@@ -793,56 +795,10 @@ impl AdamsMultiplication {
             let (r_aug_start, mut r_indet_aug) = Matrix::augmented_from_vec(p, &right_indet.to_vec());
             r_indet_aug.row_reduce();
                 
-            return Ok(r_indet_aug.compute_image(right_indet.columns(), r_aug_start));
-        }
+            r_indet_aug.compute_image(right_indet.columns(), r_aug_start)
+        };
 
-        // from (s_right, t_right) -> (s_tot, t_tot)
-        let left_indet = match self.left_multiplication_by((s1,t1).into(), &v1, (s_right, t_right).into()) {
-            Ok(lmat) => lmat,
-            Err(err) => { 
-                return Err(
-                    format!(
-                        "Couldn't compute the left multiplication ({}, {}, {})* : ({}, {}) -> ({}, {}) because {}", 
-                        s1, t1, v1,
-                        s_right, t_right,
-                        s_tot, t_tot,
-                        err
-                    )); 
-            }
-        };
-        let right_indet = match self.right_multiplication_by((s3, t3).into(), &v3, (s_left, t_left).into()) {
-            Ok(rmat) => rmat,
-            Err(err) => { 
-                return Err(
-                    format!(
-                        "Couldn't compute the right multiplication *({}, {}, {}) : ({}, {}) -> ({}, {}) because {}", 
-                        s3, t3, v3,
-                        s_left, t_left,
-                        s_tot, t_tot,
-                        err
-                    )); 
-            }
-        };
-        
-        let (l_aug_start, mut l_indet_aug) = Matrix::augmented_from_vec(p, &left_indet.to_vec());
-        l_indet_aug.row_reduce();
-        let (r_aug_start, mut r_indet_aug) = Matrix::augmented_from_vec(p, &right_indet.to_vec());
-        r_indet_aug.row_reduce();
-        
-        let l_ind_subsp = l_indet_aug.compute_image(left_indet.columns(), l_aug_start);
-        let r_ind_subsp = r_indet_aug.compute_image(right_indet.columns(), r_aug_start);
-        let mut indet = Subspace::new(p, l_ind_subsp.dimension() + r_ind_subsp.dimension(), l_ind_subsp.ambient_dimension());
-        indet.add_vectors(
-            l_ind_subsp
-                .iter()
-                .take(l_ind_subsp.dimension())
-                .cloned()
-                .chain(
-                    r_ind_subsp
-                    .iter()
-                    .take(r_ind_subsp.dimension())
-                    .cloned()));
-        Ok(indet)
+        Ok((l_indet, r_indet))
     }
 
     /// computes the maximum degree through which multiplication with an adams element is defined
@@ -1158,8 +1114,8 @@ impl AdamsMultiplication {
                     let massey_rep = FpVector::from_slice(self.prime(), &answer);
                     eprintln!(" nonzero rep for <{},-,->={}", vec_a, massey_rep);
                     let ae1 = (a_deg, &vec_a).into();
-                    let indet = match self.compute_indeterminacy_of_massey_product(&ae1, b_deg, &c) {
-                        Ok(subsp) => subsp,
+                    let indets = match self.compute_indeterminacy_of_massey_product(&ae1, b_deg, &c) {
+                        Ok(indets) => indets,
                         Err(reason) => {
                             eprintln!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
                             s1, t1, vec_a, 
@@ -1172,10 +1128,11 @@ impl AdamsMultiplication {
                             continue; // printed out, keep on going
                         }
                     };
-                    if indet.contains(massey_rep.as_slice()) {
+                    let massey_prod = MasseyProduct::new(tot_s, tot_t, massey_rep, indets.0, indets.1);
+                    if massey_prod.contains_zero() {
                         continue; // massey product is trivial, ignore it
                     }
-                    ans.push((ae1, massey_rep, indet))
+                    ans.push((ae1, massey_prod.rep().clone(), massey_prod.indet().clone()))
                 }
             }
             eprintln!("done.");
@@ -1381,7 +1338,7 @@ impl AdamsMultiplication {
             if nonzero {
                 let massey_rep = FpVector::from_slice(v1.prime(), &answer);
                 let indet = match self.compute_indeterminacy_of_massey_product(ae1, (s2, t2).into(), ae3) {
-                    Ok(subsp) => subsp,
+                    Ok((l_sub,r_sub)) => utils::subspace_sum(&l_sub, &r_sub),
                     Err(reason) => {
                         println!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
                             s1, t1, v1, 
