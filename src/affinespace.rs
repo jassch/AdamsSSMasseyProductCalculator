@@ -67,7 +67,6 @@ impl PartialEq for AffineSpace {
         if self.prime() != other.prime() {
             return false;
         }
-        let p:u32 = *self.prime();
         if self.dimension() != other.dimension() {
             return false;
         }
@@ -88,7 +87,6 @@ impl PartialOrd for AffineSpace {
         if self.prime() != other.prime() {
             return None;
         }
-        let p:u32 = *self.prime();
         let (smaller,larger,swapped) = if self.dimension() <= other.dimension() {
             (self, other, false)
         } else {

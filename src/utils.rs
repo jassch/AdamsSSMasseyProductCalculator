@@ -41,7 +41,6 @@ pub fn subspace_equality(lsub: &Subspace, rsub: &Subspace) -> bool {
     if lsub.prime() != rsub.prime() {
         return false;
     }
-    let p:u32 = *lsub.prime();
     if lsub.dimension() != rsub.dimension() {
         return false;
     }
