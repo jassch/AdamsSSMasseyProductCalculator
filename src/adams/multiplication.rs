@@ -39,7 +39,7 @@ pub struct AdamsMultiplication {
     /// filename storing resolution data
     res_file_name: String,
     ///directory to incrementally store resolutions to save progress
-    res_data_directory: String, 
+    res_data_directory: Option<String>, 
     /// max_s w/ dimensions computed
     max_s: u32,
     /// max_t w/ dimensions computed
@@ -56,12 +56,13 @@ pub struct AdamsMultiplication {
     /// each file will have the multiplication matrices as computed so far
     /// it's not great. We'll have to see how we can make this more efficient
     /// possibly need to go in to ext and add Save/Load to resolution homomorphisms
-    multiplication_data_directory: String,
+    multiplication_data_directory: Option<String>,
+    resolution_homomorphism_data_directory: Option<String>,
     /// hash map to store known (multiplicative) decompositions of elements
     known_decompositions:
         HashMap<AdamsElement, Vec<(AdamsElement, AdamsElement)>>,
     /// directory to store massey product outputs
-    massey_product_data_directory: String,
+    massey_product_data_directory: Option<String>,
 }
 
 
@@ -117,16 +118,34 @@ impl AdamsMultiplication {
         fully_computed
     }
 
-    fn ensure_resolution_data_directory_exists(&self) -> io::Result<()> {
+    fn ensure_resolution_data_directory_exists(&self) -> io::Result<bool> {
+        if !self.has_resolution_data_directory() {
+            return Ok(false)
+        }
         DirBuilder::new()
             .recursive(true)
-            .create(self.res_data_directory.clone())
+            .create(self.res_data_directory.clone().expect("resolution data directory unexpectedly None"))?;
+        Ok(true)
     }
 
-    fn ensure_multiplication_data_directory_exists(&self) -> io::Result<()> {
+    fn ensure_multiplication_data_directory_exists(&self) -> io::Result<bool> {
+        if !self.has_multiplication_data_directory() {
+            return Ok(false)
+        }
         DirBuilder::new()
             .recursive(true)
-            .create(self.multiplication_data_directory.clone())
+            .create(self.multiplication_data_directory.clone().expect("multiplication data directory unexpectedly None"))?;
+        Ok(true)
+    }
+
+    fn ensure_resolution_homomorphism_data_directory_exists(&self) -> io::Result<bool> {
+        if !self.has_resolution_homomorphism_data_directory() {
+            return Ok(false)
+        }
+        DirBuilder::new()
+            .recursive(true)
+            .create(self.multiplication_data_directory.clone().expect("multiplication data directory unexpectedly None"))?;
+        Ok(true)
     }
 
     pub fn extend_resolution_to(&mut self, deg: Bidegree) -> io::Result<()> {
@@ -154,10 +173,12 @@ impl AdamsMultiplication {
                 let bucket = ext::utils::query_bucket();
                 self.resolution.compute_through_bidegree_concurrent(s, t, &bucket);
             }
-                
-            let file: File = File::create(self.resolution_file_path(cur_deg))?;
-            let mut buf_file = std::io::BufWriter::new(file);
-            self.resolution.save(&mut buf_file)?;
+            
+            if self.has_resolution_data_directory() {
+                let file: File = File::create(self.resolution_file_path(cur_deg).expect("unexpectedly resolution file path was None"))?;
+                let mut buf_file = std::io::BufWriter::new(file);
+                self.resolution.save(&mut buf_file)?;
+            }
 
         }
         let file: File = File::create(&self.res_file_name)?;
@@ -169,7 +190,13 @@ impl AdamsMultiplication {
         Ok(())
     }
 
-    pub fn new(res_file_name: String, res_data_directory: String, multiplication_data_directory: String, massey_product_data_directory: String) -> error::Result<AdamsMultiplication> {
+    pub fn new(res_file_name: String, 
+        res_data_directory: Option<String>, 
+        multiplication_data_directory: Option<String>, 
+        resolution_homomorphism_data_directory: Option<String>,
+        massey_product_data_directory: Option<String>
+        ) -> error::Result<AdamsMultiplication> 
+    {
         let save_path = Path::new(&res_file_name);
         //let mut res_opt: Result<Resolution<CCC>,Error> = error::from_string("could not construct module");
         let res_opt;
@@ -224,6 +251,7 @@ impl AdamsMultiplication {
             multiplication_matrices: 
                 HashMap::new(),
             multiplication_data_directory,
+            resolution_homomorphism_data_directory,
             known_decompositions:
                 HashMap::new(),
             massey_product_data_directory,
@@ -231,6 +259,7 @@ impl AdamsMultiplication {
 
         result.ensure_multiplication_data_directory_exists()?;
         result.ensure_resolution_data_directory_exists()?;
+        result.ensure_resolution_homomorphism_data_directory_exists()?;
 
         Ok(result)
     }
@@ -299,7 +328,10 @@ impl AdamsMultiplication {
     pub fn try_load_resoln_hom_for_adams_gen(&self, g: AdamsGenerator) -> 
         io::Result<Option<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>>>
     {
-        let path = self.multiplication_hom_file_path(g);
+        let path = match self.multiplication_hom_file_path(g) {
+            Some (path) => path,
+            None => return Ok(None) // no directory provided
+        };
         
         if path.exists() {
             let mut file = File::open(path)?;
@@ -316,7 +348,7 @@ impl AdamsMultiplication {
         res_hom: &ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>) 
         -> io::Result<()>
     {
-        let path = self.multiplication_hom_file_path(g);
+        let path = self.multiplication_hom_file_path(g).ok_or(io::Error::new(io::ErrorKind::Other, "No resolution homomorphism data directory, can't save resolution homomorphisms."))?;
         let mut file = File::create(path)?;
         res_hom.save(&mut file)
     }
@@ -338,46 +370,78 @@ impl AdamsMultiplication {
         hom
     }
     
+    pub fn has_multiplication_data_directory(&self) -> bool {
+        self.multiplication_data_directory.is_some()
+    }
+    pub fn has_resolution_data_directory(&self) -> bool {
+        self.res_data_directory.is_some()
+    }
+    pub fn has_massey_product_data_directory(&self) -> bool {
+        self.massey_product_data_directory.is_some()
+    }
+    pub fn has_resolution_homomorphism_data_directory(&self) -> bool {
+        self.resolution_homomorphism_data_directory.is_some()
+    }
+
     fn multiplication_file_name(g: AdamsGenerator) -> String {
         format!("mult_s{}_t{}_{}.data", g.s(), g.t(), g.idx())
     }
 
-    fn multiplication_file_path(&self, g: AdamsGenerator) -> PathBuf {
-        let path: PathBuf = 
-            [self.multiplication_data_directory.clone(), Self::multiplication_file_name(g)]
-                .iter()
-                .collect();
-        path
+    fn multiplication_file_path(&self, g: AdamsGenerator) -> Option<PathBuf> {
+        match &self.multiplication_data_directory {
+            Some(dir) => {
+                let path: PathBuf = 
+                [dir.clone(), Self::multiplication_file_name(g)]
+                    .iter()
+                    .collect();
+                Some(path)
+            }
+            None => None
+        }
     }
 
     fn multiplication_hom_file_name(g: AdamsGenerator) -> String {
         format!("mult_s{}_t{}_{}_homomorphism.data", g.s(), g.t(), g.idx())
     }
-    fn multiplication_hom_file_path(&self, g:AdamsGenerator) -> PathBuf {
-        let path: PathBuf = 
-            [self.multiplication_data_directory.clone(), Self::multiplication_hom_file_name(g)]
-                .iter()
-                .collect();
-        path
+    fn multiplication_hom_file_path(&self, g:AdamsGenerator) -> Option<PathBuf> {
+        match &self.resolution_homomorphism_data_directory {
+            Some(dir) => {
+                let path: PathBuf = 
+                [dir.clone(), Self::multiplication_hom_file_name(g)]
+                    .iter()
+                    .collect();
+                Some(path)
+            }
+            None => None
+        }
     }
     
     fn resolution_file_name(deg: Bidegree) -> String {
         format!("S_2_resolution_s{}_t{}.data", deg.s(), deg.t())
     }
 
-    fn resolution_file_path(&self, deg: Bidegree) -> PathBuf {
-        let path: PathBuf = 
-            [self.res_data_directory.clone(), Self::resolution_file_name(deg)]
-                .iter()
-                .collect();
-        path
+    fn resolution_file_path(&self, deg: Bidegree) -> Option<PathBuf> {
+        
+        match &self.res_data_directory {
+            Some(dir) => {
+                let path: PathBuf = 
+                [dir.clone(), Self::resolution_file_name(deg)]
+                    .iter()
+                    .collect();
+                Some(path)
+            }
+            None => None
+        }
     }
 
 
 
     pub fn load_multiplications_for(&self, g: AdamsGenerator) 
         -> io::Result<Option<(Bidegree, HashMap<Bidegree, Matrix>)>> {
-        let path = self.multiplication_file_path(g);
+        let path = match self.multiplication_file_path(g) {
+            Some(path) => path,
+            None => return Ok(None) // no directory provided
+        };
         if path.exists() {
             let mut file = File::open(path)?;
             let max_deg = Bidegree::load(&mut file, &())?;
@@ -388,10 +452,11 @@ impl AdamsMultiplication {
             Ok(None)
         }
     }
+
     pub fn save_multiplications_for(&self, g: AdamsGenerator, computed_range: Bidegree, matrices: &HashMap<Bidegree, Matrix>) 
         -> io::Result<()>
     {
-        let path = self.multiplication_file_path(g);
+        let path = self.multiplication_file_path(g).ok_or(io::Error::new(io::ErrorKind::Other, "No multiplication data directory, can't save multiplications."))?;
         let mut file = File::create(path)?;
         computed_range.save(&mut file)?;
         SaveHM(&matrices).save(&mut file)?;
@@ -473,16 +538,18 @@ impl AdamsMultiplication {
 
         // hom has been extended
         // save the hom first
-        match self.save_resoln_hom_for_adams_gen(g, &hom) {
-            Ok(()) => (),
-            Err(err) => { 
-                eprintln!(
-                    "Failed to save resolution homomorphism for generator {}.\nError: {}", 
-                    g,
-                    err
-                );
-            }
-        };
+        if self.has_resolution_homomorphism_data_directory() {
+            match self.save_resoln_hom_for_adams_gen(g, &hom) {
+                Ok(()) => (),
+                Err(err) => { 
+                    eprintln!(
+                        "Failed to save resolution homomorphism for generator {}.\nError: {}", 
+                        g,
+                        err
+                    );
+                }
+            };
+        }
 
         // then read off and insert the multiplication matrices
 
@@ -530,46 +597,17 @@ impl AdamsMultiplication {
             // convert to fp::matrix::Matrix and store
             hm.insert(rhs, Matrix::from_vec(self.prime(), &matrix));
         }
-        match self.save_multiplications_for(g, compute_to, &hm) {
-            Ok(_) => {},
-            Err(e) => { return Err(e.to_string()); }
-        };
+        if self.has_multiplication_data_directory() {
+            match self.save_multiplications_for(g, compute_to, &hm) {
+                Ok(_) => {},
+                Err(e) => { return Err(e.to_string()); }
+            };
+        }
 
         Ok((compute_to, hm))
     }
 
-    /// is the bilinear map Adams(deg1) x Adams(deg2) -> Adams(deg1+deg2)
-    /// completely computed?
-    /// // TODO reimplement this
-    /*
-    pub fn multiplication_completely_computed(self: &Self, deg1: Bidegree, deg2: Bidegree) -> bool {
-        let (s1,t1) = deg1.into();
-        let (s2,t2) = deg2.into();
-        if !self.multiplication_in_bounds(deg1, deg2) {
-            return false;
-        }
-        let num_gens_left = match self.num_gens_bidegree(deg1) {
-            Some(n) => n,
-            None => { 
-                return false; 
-            }
-        };
-        for index in 0..num_gens_left {
-            match self.multiplication_range_computed.get(&(s1,t1,index).into()) {
-                Some(deg2_max) => {
-                    let (s2_max,t2_max) = (*deg2_max).into();
-                    if (s2 > s2_max) || (t2 > t2_max) {
-                        return false;
-                    }
-                }
-                None => {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-    */
+    
 
     pub fn compute_all_multiplications(&mut self) -> Result<(), String> {
         //self.compute_multiplications(self.max_s, self.max_t, self.max_s, self.max_t);
@@ -590,6 +628,44 @@ impl AdamsMultiplication {
                 let g = (lhs,idx).into();
                 let mult_data = self.compute_multiplication(g, rhs_max)?;
                 self.multiplication_matrices.insert(g, mult_data);
+            }
+        }
+        Ok(())
+    }
+
+    /// boolean variable store determines whether or not to store the multiplication matrices
+    /// callback called with adams generator, max bidegree for which multiplication matrices were computed
+    /// and the hashmap of multiplication matrices for multiplication by the adams generator
+    pub fn compute_all_multiplications_callback<F>(&mut self, store: bool, callback: &mut F) 
+        -> Result<(), String>  where
+        F: FnMut(AdamsGenerator, Bidegree, &HashMap<Bidegree, Matrix>) -> Result<(), String>
+    {
+        self.compute_multiplications(self.max_deg(), self.max_deg())
+    }
+
+    /// boolean variable store determines whether or not to store the multiplication matrices
+    /// callback called with adams generator, max bidegree for which multiplication matrices were computed
+    /// and the hashmap of multiplication matrices for multiplication by the adams generator
+    pub fn compute_multiplications_callback<F>(&mut self, lhs_max: Bidegree, rhs_max: Bidegree, store: bool, callback: &mut F) 
+        -> Result<(), String> where
+        F: FnMut(AdamsGenerator, Bidegree, &HashMap<Bidegree, Matrix>) -> Result<(), String>
+    {
+        let lhs_max = lhs_max.meet(self.max_deg()); // don't go out of range
+        let rhs_max = rhs_max.meet(self.max_deg()); // don't go out of range
+        for lhs in lhs_max.iter_s_t() {
+            let dim = match self.num_gens_bidegree(lhs) {
+                Some(n) => n,
+                None => {
+                    return Err(format!("compute_multiplications: Expected {} to be computed!", lhs))
+                }
+            };
+            for idx in 0..dim {
+                let g = (lhs,idx).into();
+                let mult_data = self.compute_multiplication(g, rhs_max)?;
+                callback(g, mult_data.0, &mult_data.1)?;
+                if store {
+                    self.multiplication_matrices.insert(g, mult_data);
+                }
             }
         }
         Ok(())

@@ -1,3 +1,4 @@
+// cargo run --bin main
 
 // import library root
 use massey::*;
@@ -84,7 +85,7 @@ fn main() -> error::Result {
 
     
     println!("Loading and extending resolution...");
-    let mut adams_mult: AdamsMultiplication = AdamsMultiplication::new(save_file_name, resolution_saves_directory, multiplication_data_directory, massey_product_data_directory)?;
+    let mut adams_mult: AdamsMultiplication = AdamsMultiplication::new(save_file_name, Some(resolution_saves_directory), Some(multiplication_data_directory.clone()), Some(multiplication_data_directory), Some(massey_product_data_directory))?;
     let prime = adams_mult.prime();
 
     adams_mult.extend_resolution_to((max_s,max_t).into())?;
