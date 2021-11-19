@@ -51,6 +51,9 @@ impl MasseyProduct {
     pub fn rep(&self) -> &FpVector {
         &self.rep
     }
+    pub fn rep_elt(&self) -> AdamsElement {
+        AdamsElement::new(self.s, self.t, self.rep.clone())
+    }
     pub fn left_indet(&self) -> &Subspace {
         &self.l_indet
     }

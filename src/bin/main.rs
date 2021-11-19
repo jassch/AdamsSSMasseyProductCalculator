@@ -1,4 +1,7 @@
 
+// import library root
+use massey::*;
+
 use std::cmp::min;
 use std::io;
 use std::fs::File;
@@ -17,13 +20,9 @@ use fp::vector::FpVector;
 use fp::matrix::Matrix;
 use saveload::Save;
 
-pub mod utils;
 
-pub mod adams;
-use adams::{Bidegree, AdamsElement, AdamsGenerator, AdamsMultiplication};
+use adams::{Bidegree, AdamsElement, AdamsGenerator, AdamsMultiplication, MasseyProduct};
 
-pub mod lattice;
-pub mod affinespace;
 
 //pub mod computation;
 //use computation::ComputationResult;
@@ -73,6 +72,8 @@ fn main() -> error::Result {
     let resolution_saves_directory = String::from("../massey-prod-calc-data/S_2_resolution_incremental_data");
     let multiplication_data_directory = String::from("../massey-prod-calc-data/S_2_multiplication_data");
     let massey_product_data_directory = String::from("../massey-prod-calc-data/S_2_massey_prod_data");
+
+    let massey_product_save_file = String::from("massey-prods-a-h0-h1-32-102.data");
 
     let max_s=33;
     let max_t=105;
@@ -138,10 +139,15 @@ fn main() -> error::Result {
     println!("Computing massey products <-,{},{}>...", h1, h0);
     let (deg_computed, massey_h1_h0) = adams_mult.compute_massey_prods_for_pair(&kers_h1, max_massey_deg, &h1, &h0);
     println!("Massey products <-,{},{}> computed through degree {} out of {}", h1, h0, deg_computed, max_massey_deg);
-    let shift_deg = (1,3).into();
-    for (a, rep, indet) in massey_h1_h0 {
-        let rep_ae: AdamsElement = (a.degree() + shift_deg, rep).into();
-        println!("<{}, h1, h0> = {} + {}", a, rep_ae, indet.matrix);
+    //let shift_deg = (1,3).into();
+    let mut save_file = File::create(massey_product_save_file)?;
+    deg_computed.save(&mut save_file)?;
+    massey_h1_h0.len().save(&mut save_file)?;
+    for (a, prod) in massey_h1_h0 {
+        let rep_ae: AdamsElement = prod.rep_elt();
+        println!("<{}, h1, h0> = {} + {}", a, rep_ae, prod.indet().matrix);
+        a.save(&mut save_file)?;
+        prod.save(&mut save_file)?;
     }
     
 

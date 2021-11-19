@@ -801,6 +801,13 @@ impl AdamsMultiplication {
         Ok((l_indet, r_indet))
     }
 
+    pub fn zero_massey_product_for(&self, a: &AdamsElement, b: Bidegree, c:&AdamsElement) -> Result<MasseyProduct, String> {
+        let (l_ind, r_ind) = self.compute_indeterminacy_of_massey_product(a,b,c)?;
+        let bidegree = (a.s() + b.s() + c.s() - 1, a.t() + b.t() + c.t()).into();
+        let res_dim = self.num_gens_bidegree(bidegree).map(|a| Ok (a)).unwrap_or(Err("massey product resulting group not computed"))?;
+        Ok(MasseyProduct::new_ae(&(bidegree,FpVector::new(self.prime(), res_dim)).into(), l_ind, r_ind))
+    }
+
     /// computes the maximum degree through which multiplication with an adams element is defined
     /// expects the adams generator to be valid
     pub fn multiplication_computed_through_degree(&self, gen: AdamsGenerator) -> Option<Bidegree> {
@@ -970,7 +977,7 @@ impl AdamsMultiplication {
         max_deg_a: Bidegree, 
         b: &AdamsElement, 
         c: &AdamsElement) 
-        -> (Bidegree, Vec<(AdamsElement, FpVector, Subspace)>)
+        -> (Bidegree, Vec<(AdamsElement, MasseyProduct)>)
     {
         eprintln!("compute_massey_prods_for_pair(kernels, {}, {}, {})", max_deg_a, b, c);
         let mut ans = vec![];
@@ -1132,7 +1139,7 @@ impl AdamsMultiplication {
                     if massey_prod.contains_zero() {
                         continue; // massey product is trivial, ignore it
                     }
-                    ans.push((ae1, massey_prod.rep().clone(), massey_prod.indet().clone()))
+                    ans.push((ae1, massey_prod))
                 }
             }
             eprintln!("done.");
