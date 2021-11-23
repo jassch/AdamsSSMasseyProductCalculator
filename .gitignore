@@ -2,6 +2,12 @@
 /S_2_multiplication_data
 /S_2_multiplication_data_bak
 /S_2_resolution_incremental_data
-S_2resolution.data 
+S_2_resolution.data 
 *.data
-/ouput
+/output
+
+# Rust
+**/*.rs.bk
+**/*.lock
+**/cachegrind
+**/time
