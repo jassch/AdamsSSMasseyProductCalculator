@@ -16,3 +16,5 @@ query = { path = "../sseq/ext/crates/query" }
 saveload = { path = "../sseq/ext/crates/saveload" }
 thread-token = { path = "../sseq/ext/crates/thread-token", optional = true }
 
+[features]
+save-res = []

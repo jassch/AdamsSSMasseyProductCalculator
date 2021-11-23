@@ -325,6 +325,7 @@ impl AdamsMultiplication {
         Ok(hom)
     }
 
+    #[cfg(feature = "save-res")]
     pub fn try_load_resoln_hom_for_adams_gen(&self, g: AdamsGenerator) -> 
         io::Result<Option<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>>>
     {
@@ -344,6 +345,14 @@ impl AdamsMultiplication {
         }
     }
 
+    #[cfg(not(feature = "save-res"))]
+    pub fn try_load_resoln_hom_for_adams_gen(&self, g: AdamsGenerator) -> 
+        io::Result<Option<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>>>
+    {
+        Ok(None)
+    }
+
+    #[cfg(feature = "save-res")]
     pub fn save_resoln_hom_for_adams_gen(&self, g: AdamsGenerator, 
         res_hom: &ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>) 
         -> io::Result<()>
@@ -351,6 +360,14 @@ impl AdamsMultiplication {
         let path = self.multiplication_hom_file_path(g).ok_or(io::Error::new(io::ErrorKind::Other, "No resolution homomorphism data directory, can't save resolution homomorphisms."))?;
         let mut file = File::create(path)?;
         res_hom.save(&mut file)
+    }
+
+    #[cfg(not(feature = "save-res"))]
+    pub fn save_resoln_hom_for_adams_gen(&self, _g: AdamsGenerator, 
+        _res_hom: &ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>) 
+        -> io::Result<()>
+    {
+        Ok(())
     }
 
     pub fn adams_elt_to_resoln_hom(&self, e: &AdamsElement) -> ResolutionHomomorphism<Resolution<CCC>,Resolution<CCC>> {
