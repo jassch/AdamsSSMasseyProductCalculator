@@ -1,34 +1,31 @@
+use saveload::{Load, Save};
 
-use saveload::{Save, Load};
-
-use std::io::{Read, Write};
 use std::io;
+use std::io::{Read, Write};
 
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
-use fp::vector::FpVector;
 use fp::matrix::Subspace;
 use fp::prime::ValidPrime;
-use std::cmp::{PartialOrd, Ordering};
-
-
+use fp::vector::FpVector;
+use std::cmp::{Ordering, PartialOrd};
 
 #[derive(Debug, Clone)]
 pub struct AffineSpace {
     translation: FpVector,
-    plane: Subspace
+    plane: Subspace,
 }
 
 impl AffineSpace {
     pub fn new(translation: FpVector, plane: Subspace) -> Self {
-        AffineSpace {
-            translation,
-            plane
-        }
+        AffineSpace { translation, plane }
     }
     pub fn from_subspace(plane: Subspace) -> Self {
-        Self::new(FpVector::new(plane.prime(), plane.ambient_dimension()), plane)
+        Self::new(
+            FpVector::new(plane.prime(), plane.ambient_dimension()),
+            plane,
+        )
     }
     pub fn from_vector(translation: FpVector) -> Self {
         let sub = Subspace::empty_space(translation.prime(), translation.len());
@@ -54,7 +51,7 @@ impl AffineSpace {
     }
     pub fn contains(&self, other: &FpVector) -> bool {
         let mut diff = other.clone();
-        diff.add(&self.translation, *self.prime()-1);
+        diff.add(&self.translation, *self.prime() - 1);
         self.plane.contains(diff.as_slice())
     }
     pub fn contains_zero(&self) -> bool {
@@ -87,7 +84,7 @@ impl PartialOrd for AffineSpace {
         if self.prime() != other.prime() {
             return None;
         }
-        let (smaller,larger,swapped) = if self.dimension() <= other.dimension() {
+        let (smaller, larger, swapped) = if self.dimension() <= other.dimension() {
             (self, other, false)
         } else {
             (other, self, true)
@@ -101,7 +98,7 @@ impl PartialOrd for AffineSpace {
         if larger.contains(&smaller.translation) {
             // know smaller <= larger, == if dimensions are equal
             if self.dimension() == other.dimension() {
-                return Some(Ordering::Equal)
+                return Some(Ordering::Equal);
             }
             // smaller < larger
             if swapped {
@@ -113,7 +110,6 @@ impl PartialOrd for AffineSpace {
         } else {
             None
         }
-
     }
 }
 
@@ -136,9 +132,6 @@ impl Load for AffineSpace {
     fn load(buffer: &mut impl Read, data: &Self::AuxData) -> io::Result<Self> {
         let translation = FpVector::load(buffer, data)?;
         let plane = Subspace::load(buffer, data)?;
-        Ok(AffineSpace {
-            translation,
-            plane
-        })
+        Ok(AffineSpace { translation, plane })
     }
 }

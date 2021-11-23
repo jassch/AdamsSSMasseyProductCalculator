@@ -1,27 +1,26 @@
-
 mod element;
 mod generator;
-mod multiplication;
 mod masseyproduct;
+mod multiplication;
 
-use saveload::{Save, Load};
+use saveload::{Load, Save};
 
-use std::io::{Read, Write};
 use std::io;
+use std::io::{Read, Write};
 
-use std::cmp::{PartialOrd, Ordering};
+use std::cmp::{Ordering, PartialOrd};
 
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
 use std::ops::{Add, AddAssign};
 
-use crate::lattice::{JoinSemilattice, MeetSemilattice, meet, join};
+use crate::lattice::{join, meet, JoinSemilattice, MeetSemilattice};
 
 pub use element::AdamsElement;
 pub use generator::AdamsGenerator;
-pub use multiplication::AdamsMultiplication;
 pub use masseyproduct::MasseyProduct;
+pub use multiplication::AdamsMultiplication;
 
 /// type synonym for (s,t) bidegrees
 
@@ -30,19 +29,19 @@ pub struct Bidegree {
     /// resolution degree
     s: u32,
     /// internal degree
-    t: i32, 
+    t: i32,
 }
 
 /// iterates over a rectangle of (s,t) degrees specified by min and max inclusive
 /// iterates over t first (i.e. if this were a pair of loops, s is the outer loop, t is the inner loop)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BidegreeIterator {
     /// Bidegree to start at
     min: Bidegree,
     /// Bidegree to iterate over (includes this degree)
     max: Bidegree,
     /// current location in iteration
-    current: Bidegree, 
+    current: Bidegree,
 }
 
 impl BidegreeIterator {
@@ -54,18 +53,18 @@ impl BidegreeIterator {
         }
     }
     pub fn new_from_origin(max: Bidegree) -> Self {
-        Self::new((0,0).into(), max)
+        Self::new((0, 0).into(), max)
     }
 }
 
 impl From<Bidegree> for BidegreeIterator {
     fn from(deg: Bidegree) -> Self {
-        Self::new((0,0).into(), deg)
+        Self::new((0, 0).into(), deg)
     }
 }
-impl <'a> From<&'a Bidegree> for BidegreeIterator {
+impl<'a> From<&'a Bidegree> for BidegreeIterator {
     fn from(deg: &'a Bidegree) -> Self {
-        Self::new((0,0).into(), *deg)
+        Self::new((0, 0).into(), *deg)
     }
 }
 
@@ -87,7 +86,7 @@ impl Iterator for BidegreeIterator {
 }
 
 /// iterates over a rectangle of (n,s) degrees specified by min and max inclusive
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StemIterator {
     /// Bidegree to start at
     min: Bidegree,
@@ -107,30 +106,33 @@ impl StemIterator {
         }
     }
     pub fn new_from_origin(max: Bidegree) -> Self {
-        Self::new((0,0).into(), max)
+        Self::new((0, 0).into(), max)
     }
 }
 
 impl From<Bidegree> for StemIterator {
     fn from(deg: Bidegree) -> Self {
-        Self::new((0,0).into(), deg)
+        Self::new((0, 0).into(), deg)
     }
 }
-impl <'a> From<&'a Bidegree> for StemIterator {
+impl<'a> From<&'a Bidegree> for StemIterator {
     fn from(deg: &'a Bidegree) -> Self {
-        Self::new((0,0).into(), *deg)
+        Self::new((0, 0).into(), *deg)
     }
 }
 
 impl Iterator for StemIterator {
     type Item = Bidegree;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current.n() <= self.max.n() && self.current.s() <= self.max.s() && self.current != self.max {
+        if self.current.n() <= self.max.n()
+            && self.current.s() <= self.max.s()
+            && self.current != self.max
+        {
             if self.current.n() < self.max.n() {
                 self.current.t += 1; // n = t-s, so increment t to increment n
             } else {
                 self.current.s += 1; // increment s first
-                self.current.t = self.min.n()+self.current.s as i32; // sets n to self.min.n()
+                self.current.t = self.min.n() + self.current.s as i32; // sets n to self.min.n()
             }
             Some(self.current)
         } else {
@@ -138,7 +140,6 @@ impl Iterator for StemIterator {
         }
     }
 }
-
 
 impl Bidegree {
     pub fn s(&self) -> u32 {
@@ -154,13 +155,10 @@ impl Bidegree {
         &mut self.t
     }
     pub fn n(&self) -> i32 {
-        self.t-self.s as i32
+        self.t - self.s as i32
     }
     pub fn new(s: u32, t: i32) -> Self {
-        Self {
-            s,
-            t,
-        }
+        Self { s, t }
     }
 
     pub fn iter_stem(&self) -> StemIterator {
@@ -171,7 +169,7 @@ impl Bidegree {
         BidegreeIterator::from(self)
     }
 
-    /// Checks that the difference in s degrees is nonnegative. 
+    /// Checks that the difference in s degrees is nonnegative.
     /// Returns difference as a bidegree if so, otherwise returns None.
     pub fn try_subtract(&self, smaller: Bidegree) -> Option<Bidegree> {
         if self.s >= smaller.s {
@@ -183,13 +181,12 @@ impl Bidegree {
             None
         }
     }
-
 }
 
 impl PartialOrd for Bidegree {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let (s1,t1): (u32, i32) = self.into();
-        let (s2,t2) = other.into();
+        let (s1, t1): (u32, i32) = self.into();
+        let (s2, t2) = other.into();
         if s1 == s2 && t1 == t2 {
             Some(Ordering::Equal)
         } else if s1 <= s2 && t1 <= t2 {
@@ -225,26 +222,25 @@ impl AddAssign for Bidegree {
     }
 }
 
-
-impl From<(u32,i32)> for Bidegree {
+impl From<(u32, i32)> for Bidegree {
     fn from(tuple: (u32, i32)) -> Self {
         Self::new(tuple.0, tuple.1)
     }
 }
 
-impl From<Bidegree> for (u32,i32) {
+impl From<Bidegree> for (u32, i32) {
     fn from(deg: Bidegree) -> Self {
         (deg.s(), deg.t())
     }
 }
 
-impl <'a> From<&'a Bidegree> for (u32,i32) {
+impl<'a> From<&'a Bidegree> for (u32, i32) {
     fn from(deg: &'a Bidegree) -> Self {
         (deg.s(), deg.t())
     }
 }
 
-impl <'a> From<&'a Bidegree> for (&'a u32,&'a i32) {
+impl<'a> From<&'a Bidegree> for (&'a u32, &'a i32) {
     fn from(deg: &'a Bidegree) -> Self {
         (&deg.s, &deg.t)
     }
@@ -264,10 +260,7 @@ impl Load for Bidegree {
     fn load(buffer: &mut impl Read, _: &Self::AuxData) -> io::Result<Self> {
         let s = u32::load(buffer, &())?;
         let t = i32::load(buffer, &())?;
-        Ok(Bidegree {
-            s,
-            t,
-        })
+        Ok(Bidegree { s, t })
     }
 }
 
