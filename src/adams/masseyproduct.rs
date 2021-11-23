@@ -62,7 +62,7 @@ impl MasseyProduct {
         &self.indet
     }
     pub fn affine(&self) -> AffineSpace {
-        return AffineSpace::new(self.rep.clone(), self.indet.clone());
+        AffineSpace::new(self.rep.clone(), self.indet.clone())
     }
     pub fn contains_zero(&self) -> bool {
         return self.indet.contains(self.rep.as_slice());

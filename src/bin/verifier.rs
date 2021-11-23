@@ -5,26 +5,16 @@
 // import library root
 use massey::*;
 
-use std::clone::Clone;
-use std::cmp::min;
+use std::{clone::Clone, cmp::Ordering};
+
 use std::collections::hash_map::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::path::Path;
-use std::sync::Arc;
 
-use algebra::module::Module;
-//use error::Error;
-use ext::chain_complex::{ChainComplex, FreeChainComplex};
-use ext::resolution::Resolution;
-use ext::resolution_homomorphism::ResolutionHomomorphism;
-use ext::utils::construct;
-use ext::CCC;
-use fp::matrix::Matrix;
 use fp::vector::FpVector;
-use saveload::{Load, Save};
+use saveload::Load;
 
-use adams::{AdamsElement, AdamsGenerator, AdamsMultiplication, Bidegree, MasseyProduct};
+use adams::{AdamsElement, AdamsMultiplication, Bidegree, MasseyProduct};
 
 use affinespace::AffineSpace;
 
@@ -38,7 +28,7 @@ fn main() -> error::Result {
         String::from("../massey-prod-calc-data/S_2_massey_prod_data");
 
     let massey_product_save_file = String::from("massey-prods-a-h0-h1-32-102.data");
-    let massey_product_save_fixed_file = String::from("massey-prods-a-h0-h1-32-102-fixed.data");
+    let _massey_product_save_fixed_file = String::from("massey-prods-a-h0-h1-32-102-fixed.data");
 
     let max_s = 33;
     let max_t = 105;
@@ -65,17 +55,16 @@ fn main() -> error::Result {
         }
     }
 
-    let h0 = (1, 1, FpVector::from_slice(prime, &vec![1])).into();
-    let h1: AdamsElement = (1, 2, FpVector::from_slice(prime, &vec![1])).into();
+    let h0 = (1, 1, FpVector::from_slice(prime, &[1])).into();
+    let h1: AdamsElement = (1, 2, FpVector::from_slice(prime, &[1])).into();
     //let max_massey_deg = (32,102).into();
 
     println!("Loading Massey products...");
-    let deg_computed;
     let mut massey_h1_h0 = Vec::new();
     {
         let save_file = File::open(massey_product_save_file)?;
         let mut buf_save_file = BufReader::new(save_file);
-        deg_computed = Bidegree::load(&mut buf_save_file, &())?;
+        let _ = Bidegree::load(&mut buf_save_file, &())?;
         let n = usize::load(&mut buf_save_file, &())?;
         for _ in 0..n {
             let a = AdamsElement::load(&mut buf_save_file, &prime)?;
@@ -153,9 +142,12 @@ fn main() -> error::Result {
                         rep_sum,
                         utils::subspace_sum(prod1.indet(), prod2.indet()),
                     );
-                    if !(prod3 <= &affine) {
-                        println!("Additivity fails for {} + {} = {}.", ae1, ae2, ae3);
-                        println!("Have {} !<= {} + {}", prod3, prod1, prod2);
+                    match prod3.partial_cmp(&affine) {
+                        None | Some(Ordering::Greater) => {
+                            println!("Additivity fails for {} + {} = {}.", ae1, ae2, ae3);
+                            println!("Have {} !<= {} + {}", prod3, prod1, prod2);
+                        }
+                        _ => {}
                     }
                 }
             }

@@ -117,7 +117,7 @@ impl Iterator for AllVectorsIterator {
                 return None;
             }
         }
-        return Some(subspace_to_global(&self.subspace, &self.current));
+        Some(subspace_to_global(&self.subspace, &self.current))
     }
 }
 

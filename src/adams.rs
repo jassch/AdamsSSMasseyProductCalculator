@@ -145,13 +145,13 @@ impl Bidegree {
     pub fn s(&self) -> u32 {
         self.s
     }
-    pub fn s_mut<'a>(&'a mut self) -> &'a mut u32 {
+    pub fn s_mut(&mut self) -> &mut u32 {
         &mut self.s
     }
     pub fn t(&self) -> i32 {
         self.t
     }
-    pub fn t_mut<'a>(&'a mut self) -> &'a mut i32 {
+    pub fn t_mut(&mut self) -> &mut i32 {
         &mut self.t
     }
     pub fn n(&self) -> i32 {

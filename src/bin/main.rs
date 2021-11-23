@@ -6,7 +6,7 @@ use massey::*;
 use std::clone::Clone;
 use std::cmp::min;
 use std::fs::File;
-use std::io;
+
 use std::path::Path;
 use std::sync::Arc;
 
@@ -21,7 +21,7 @@ use fp::matrix::Matrix;
 use fp::vector::FpVector;
 use saveload::Save;
 
-use adams::{AdamsElement, AdamsGenerator, AdamsMultiplication, Bidegree, MasseyProduct};
+use adams::{AdamsElement, AdamsMultiplication};
 
 //pub mod computation;
 //use computation::ComputationResult;
@@ -99,8 +99,8 @@ fn main() -> error::Result {
         }
     }
 
-    let h0 = (1, 1, FpVector::from_slice(prime, &vec![1])).into();
-    let h1 = (1, 2, FpVector::from_slice(prime, &vec![1])).into();
+    let h0 = (1, 1, FpVector::from_slice(prime, &[1])).into();
+    let h1 = (1, 2, FpVector::from_slice(prime, &[1])).into();
     let max_massey_deg = (32, 102).into(); //(25,60).into();//(32, 96).into();
                                            // compute Massey products
                                            // <-,h0,h1>
@@ -315,7 +315,7 @@ fn old_main() -> error::Result {
                         let matrix = hom.get_map(i + i2).hom_k(j2);
                         for (idx2, g2) in gens2.iter().enumerate() {
                             print!("{} in ({},{}) * {} in ({},{}) = ", g, i, j, g2, i2, j2);
-                            if matrix[idx2].len() == 0 {
+                            if matrix[idx2].is_empty() {
                                 println!("0 (trivial)");
                             } else {
                                 println!("{:?} in ({},{})", matrix[idx2], i + i2, j + j2);

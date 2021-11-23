@@ -2,31 +2,16 @@
 
 use massey::*;
 
-use std::clone::Clone;
-use std::cmp::min;
 use std::collections::hash_map::HashMap;
-use std::fs::File;
-use std::io;
-use std::path::Path;
-use std::sync::Arc;
 
-use algebra::module::Module;
-//use error::Error;
-use ext::chain_complex::{ChainComplex, FreeChainComplex};
-use ext::resolution::Resolution;
-use ext::resolution_homomorphism::ResolutionHomomorphism;
-use ext::utils::construct;
-use ext::CCC;
 use fp::matrix::Matrix;
-use fp::vector::FpVector;
-use saveload::Save;
 
-use adams::{AdamsElement, AdamsGenerator, AdamsMultiplication, Bidegree, MasseyProduct};
+use adams::{AdamsGenerator, AdamsMultiplication, Bidegree};
 
 fn callback(
     lhs: AdamsGenerator,
-    max_rhs_deg_computed: Bidegree,
-    matrices: &HashMap<Bidegree, Matrix>,
+    _max_rhs_deg_computed: Bidegree,
+    _matrices: &HashMap<Bidegree, Matrix>,
 ) -> Result<(), String> {
     println!("Multiplications computed for {}", lhs);
     Ok(())
