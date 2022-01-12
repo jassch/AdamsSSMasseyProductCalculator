@@ -1,4 +1,5 @@
 
+use std::cmp::Ordering;
 //use std::cmp::min;
 use std::io::Write;
 use std::fs::{File, DirBuilder};
@@ -30,7 +31,7 @@ use super::{Bidegree, AdamsElement, AdamsGenerator, MasseyProduct};
 
 use crate::utils;
 use crate::utils::{AllVectorsIterator, LoadHM, SaveHM, get_max_defined_degree};
-use crate::lattice::{JoinSemilattice, MeetSemilattice, join, meet};
+use crate::lattice::{JoinSemilattice, MeetSemilattice, meet};
 
 //#[derive(Clone)]
 pub struct AdamsMultiplication {
@@ -241,11 +242,11 @@ impl AdamsMultiplication {
         
         let result = AdamsMultiplication {
             resolution: res,
-            res_file_name: res_file_name,
+            res_file_name,
             res_data_directory,
             //num_gens: num_gens,
-            max_s: max_s,
-            max_t: max_t,
+            max_s,
+            max_t,
             //multiplication_range_computed:
             //    HashMap::new(),
             multiplication_matrices: 
@@ -301,9 +302,9 @@ impl AdamsMultiplication {
         let (s1,t1)=deg1.into();
         let (s2,t2)=deg2.into();
         if (t1 < 0) || (t2 < 0) {
-            return false;
+            false
         } else {
-            return (s1+s2 < self.max_s) && (t1 + t2 < self.max_t)
+            (s1+s2 < self.max_s) && (t1 + t2 < self.max_t)
         }
     }
 
@@ -325,6 +326,7 @@ impl AdamsMultiplication {
         Ok(hom)
     }
 
+    #[cfg(feature = "save-res")]
     pub fn try_load_resoln_hom_for_adams_gen(&self, g: AdamsGenerator) -> 
         io::Result<Option<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>>>
     {
@@ -344,6 +346,14 @@ impl AdamsMultiplication {
         }
     }
 
+    #[cfg(not(feature = "save-res"))]
+    pub fn try_load_resoln_hom_for_adams_gen(&self, _g: AdamsGenerator) -> 
+        io::Result<Option<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>>>
+    {
+        Ok(None)
+    }
+
+    #[cfg(feature = "save-res")]
     pub fn save_resoln_hom_for_adams_gen(&self, g: AdamsGenerator, 
         res_hom: &ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>) 
         -> io::Result<()>
@@ -351,6 +361,14 @@ impl AdamsMultiplication {
         let path = self.multiplication_hom_file_path(g).ok_or(io::Error::new(io::ErrorKind::Other, "No resolution homomorphism data directory, can't save resolution homomorphisms."))?;
         let mut file = File::create(path)?;
         res_hom.save(&mut file)
+    }
+
+    #[cfg(not(feature = "save-res"))]
+    pub fn save_resoln_hom_for_adams_gen(&self, _g: AdamsGenerator, 
+        _res_hom: &ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>) 
+        -> io::Result<()>
+    {
+        Ok(())
     }
 
     pub fn adams_elt_to_resoln_hom(&self, e: &AdamsElement) -> ResolutionHomomorphism<Resolution<CCC>,Resolution<CCC>> {
@@ -456,10 +474,10 @@ impl AdamsMultiplication {
     pub fn save_multiplications_for(&self, g: AdamsGenerator, computed_range: Bidegree, matrices: &HashMap<Bidegree, Matrix>) 
         -> io::Result<()>
     {
-        let path = self.multiplication_file_path(g).ok_or(io::Error::new(io::ErrorKind::Other, "No multiplication data directory, can't save multiplications."))?;
+        let path = self.multiplication_file_path(g).ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No multiplication data directory, can't save multiplications."))?;
         let mut file = File::create(path)?;
         computed_range.save(&mut file)?;
-        SaveHM(&matrices).save(&mut file)?;
+        SaveHM(matrices).save(&mut file)?;
         Ok(())
     }
 
@@ -469,9 +487,12 @@ impl AdamsMultiplication {
         let (s, t, idx) = g.into();
         let g_deg = g.degree();
         let max_deg = self.max_deg();
-        if !(g_deg <= max_deg) {
-            return Err(format!("({}, {}, {}) is out of computed range: ({}, {})", s, t, idx, self.max_s, self.max_t));
-        }
+        match g_deg.partial_cmp(&max_deg) {
+            None | Some(Ordering::Greater) => {
+                return Err(format!("({}, {}, {}) is out of computed range: ({}, {})", s, t, idx, self.max_s, self.max_t))
+            },
+            _ => {},
+        };
         //let (rmax_s, rmax_t) = mult_with_max.into();
         let rmax_poss_s = self.max_s - s as u32;
         let rmax_poss_t = self.max_t - t as i32;
@@ -636,7 +657,7 @@ impl AdamsMultiplication {
     /// boolean variable store determines whether or not to store the multiplication matrices
     /// callback called with adams generator, max bidegree for which multiplication matrices were computed
     /// and the hashmap of multiplication matrices for multiplication by the adams generator
-    pub fn compute_all_multiplications_callback<F>(&mut self, store: bool, callback: &mut F) 
+    pub fn compute_all_multiplications_callback<F>(&mut self, _store: bool, _callback: &mut F) 
         -> Result<(), String>  where
         F: FnMut(AdamsGenerator, Bidegree, &HashMap<Bidegree, Matrix>) -> Result<(), String>
     {
@@ -672,7 +693,7 @@ impl AdamsMultiplication {
     }
 
     /// only uses the dimensions, none of the multiplicative structure
-    pub fn possible_nontrivial_massey_products(self: &Self) {
+    pub fn possible_nontrivial_massey_products(&self) {
         let mut count = 0;
         let mut not_all_dim_1 = 0;
         let mut max_triples = 0;
@@ -723,10 +744,10 @@ impl AdamsMultiplication {
                                 if n1*n2*n3 > 1 {
                                     println!("Potential massey products ({},{}) x ({}, {}) x ({}, {}) -> ({}, {})", s1, t1, s2, t2, s3, t3, final_s, final_t);
                                     println!("Dimensions: {} x {} x {} -> {}", n1, n2, n3, target_n);
-                                    not_all_dim_1=not_all_dim_1+1;
+                                    not_all_dim_1 += 1;
                                 }
-                                count = count+1;
-                                max_triples = max_triples + n1*n2*n3;
+                                count += 1;
+                                max_triples += n1*n2*n3;
                             }
                         }
                     }
@@ -738,7 +759,7 @@ impl AdamsMultiplication {
         println!("Max elt triples: {}", max_triples);
     }
 
-    pub fn left_multiplication_by(self: &Self, l: Bidegree, vec: &FpVector, r: Bidegree) -> Result<Matrix, String> {
+    pub fn left_multiplication_by(&self, l: Bidegree, vec: &FpVector, r: Bidegree) -> Result<Matrix, String> {
         let p = self.prime();
         let (ls, lt) = l.into();
         let (rs, rt) = r.into();
@@ -756,7 +777,7 @@ impl AdamsMultiplication {
                     .and_then(|dim_g| -> Result<Matrix, String> {
                     let mut result = Matrix::new(p, dim_r, dim_g);
                     if (dim_l==0) || (dim_r==0) || (dim_g==0) {
-                        return Ok(result);
+                        Ok(result)
                     } else {
                         for ix in 0..dim_l {
                             let coeff = vec.entry(ix);
@@ -785,7 +806,7 @@ impl AdamsMultiplication {
         })
     }
 
-    pub fn right_multiplication_by(self: &Self, r: Bidegree, vec: &FpVector, l: Bidegree) -> Result<Matrix, String> {
+    pub fn right_multiplication_by(&self, r: Bidegree, vec: &FpVector, l: Bidegree) -> Result<Matrix, String> {
         // TODO right now I'm assuming that the multiplication in the Adams Spectral Sequence is commutative
         // so we can return
         self.left_multiplication_by(r, vec, l)
@@ -796,7 +817,7 @@ impl AdamsMultiplication {
     /// returns the pair of subspaces of  
     /// aR, Rc in R
     /// in the bidegree where <a,b,c> lives
-    pub fn compute_indeterminacy_of_massey_product(self: &Self, a: &AdamsElement, b: Bidegree, c: &AdamsElement) -> Result<(Subspace, Subspace), String> {
+    pub fn compute_indeterminacy_of_massey_product(&self, a: &AdamsElement, b: Bidegree, c: &AdamsElement) -> Result<(Subspace, Subspace), String> {
         let (s1, t1, v1) = a.into();
         let (s2, t2) = b.into();
         let (s3, t3, v3) = c.into();
@@ -829,7 +850,7 @@ impl AdamsMultiplication {
         } else {
             // compute left multiplication
             // from (s_right, t_right) -> (s_tot, t_tot)
-            let left_indet = match self.left_multiplication_by((s1, t1).into(), &v1, (s_right, t_right).into()) {
+            let left_indet = match self.left_multiplication_by((s1, t1).into(), v1, (s_right, t_right).into()) {
                 Ok(lmat) => lmat,
                 Err(err) => { 
                     return Err(
@@ -854,7 +875,7 @@ impl AdamsMultiplication {
         } else {
             // compute left multiplication
             // from (s_right, t_right) -> (s_tot, t_tot)
-            let right_indet = match self.right_multiplication_by((s3, t3).into(), &v3, (s_left, t_left).into()) {
+            let right_indet = match self.right_multiplication_by((s3, t3).into(), v3, (s_left, t_left).into()) {
                 Ok(rmat) => rmat,
                 Err(err) => { 
                     return Err(
@@ -880,17 +901,14 @@ impl AdamsMultiplication {
     pub fn zero_massey_product_for(&self, a: &AdamsElement, b: Bidegree, c:&AdamsElement) -> Result<MasseyProduct, String> {
         let (l_ind, r_ind) = self.compute_indeterminacy_of_massey_product(a,b,c)?;
         let bidegree = (a.s() + b.s() + c.s() - 1, a.t() + b.t() + c.t()).into();
-        let res_dim = self.num_gens_bidegree(bidegree).map(|a| Ok (a)).unwrap_or(Err("massey product resulting group not computed"))?;
+        let res_dim = self.num_gens_bidegree(bidegree).map(Ok).unwrap_or(Err("massey product resulting group not computed"))?;
         Ok(MasseyProduct::new_ae(&(bidegree,FpVector::new(self.prime(), res_dim)).into(), l_ind, r_ind))
     }
 
     /// computes the maximum degree through which multiplication with an adams element is defined
     /// expects the adams generator to be valid
     pub fn multiplication_computed_through_degree(&self, gen: AdamsGenerator) -> Option<Bidegree> {
-        match self.multiplication_matrices.get(&gen) {
-            Some((res,_)) => Some(*res),
-            None => None
-        }
+        self.multiplication_matrices.get(&gen).map(|(res, _)| *res)
     }
 
     /// returns maximum degree such that all multiplications with generators living in multiplier_deg 
@@ -1197,7 +1215,7 @@ impl AdamsMultiplication {
                     let massey_rep = FpVector::from_slice(self.prime(), &answer);
                     eprintln!(" nonzero rep for <{},-,->={}", vec_a, massey_rep);
                     let ae1 = (a_deg, &vec_a).into();
-                    let indets = match self.compute_indeterminacy_of_massey_product(&ae1, b_deg, &c) {
+                    let indets = match self.compute_indeterminacy_of_massey_product(&ae1, b_deg, c) {
                         Ok(indets) => indets,
                         Err(reason) => {
                             eprintln!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
@@ -1322,7 +1340,7 @@ impl AdamsMultiplication {
                             None => { continue; } // no interesting vectors/kernels in this bidegree pair
                         };
                         for (v1, ker_v1) in hm_kers.iter() {
-                            for v2 in AllVectorsIterator::new(&ker_v1) {
+                            for v2 in AllVectorsIterator::new(ker_v1) {
                                 if v2.is_zero() {
                                     continue; // skip the zero vector
                                 }
@@ -1353,7 +1371,7 @@ impl AdamsMultiplication {
                                             Some(ker_v2) => { ker_v2 },
                                             None => { continue; } // v2 doesn't have an interesting kernel here
                                         };
-                                        for v3 in AllVectorsIterator::new(&ker_v2) {
+                                        for v3 in AllVectorsIterator::new(ker_v2) {
                                             if v3.is_zero() {
                                                 continue;
                                             }
@@ -1381,9 +1399,9 @@ impl AdamsMultiplication {
                 None => { continue; }
             };
 
-            let res_hom_2 = self.adams_elt_to_resoln_hom(&ae2);
+            let res_hom_2 = self.adams_elt_to_resoln_hom(ae2);
             res_hom_2.extend_through_stem(shift_s, shift_n);
-            let res_hom_3 = self.adams_elt_to_resoln_hom(&ae3);
+            let res_hom_3 = self.adams_elt_to_resoln_hom(ae3);
             res_hom_3.extend_through_stem(tot_s, tot_n);
 
             let homotopy = ChainHomotopy::new(
@@ -1444,10 +1462,10 @@ impl AdamsMultiplication {
                 if indet.contains(massey_rep.as_slice()) {
                     println!(" = 0 ")
                 } else {
-                    println!("");
+                    println!();
                 }
             } else {
-                writeln!(zero_massey_output, "< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = 0 + did not compute indeterminacy", 
+                let _ = writeln!(zero_massey_output, "< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = 0 + did not compute indeterminacy", 
                     s1, t1, v1, 
                     s2, t2, v2, 
                     s3, t3, v3,

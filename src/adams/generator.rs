@@ -1,10 +1,9 @@
-
 use super::Bidegree;
 
-use saveload::{Save, Load};
+use saveload::{Load, Save};
 
-use std::io::{Read, Write};
 use std::io;
+use std::io::{Read, Write};
 
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -16,9 +15,9 @@ pub struct AdamsGenerator {
     /// resolution degree
     s: u32,
     /// internal degree
-    t: i32, 
+    t: i32,
     /// generator index
-    idx: usize, 
+    idx: usize,
 }
 
 impl AdamsGenerator {
@@ -32,17 +31,13 @@ impl AdamsGenerator {
         (self.s, self.t).into()
     }
     pub fn n(&self) -> i32 {
-        self.t-self.s as i32
+        self.t - self.s as i32
     }
     pub fn idx(&self) -> usize {
         self.idx
     }
     pub fn new(s: u32, t: i32, idx: usize) -> AdamsGenerator {
-        AdamsGenerator {
-            s,
-            t,
-            idx,
-        }
+        AdamsGenerator { s, t, idx }
     }
 }
 
@@ -52,12 +47,12 @@ impl Display for AdamsGenerator {
     }
 }
 
-impl From<(u32,i32,usize)> for AdamsGenerator {
+impl From<(u32, i32, usize)> for AdamsGenerator {
     fn from(tuple: (u32, i32, usize)) -> Self {
         Self::new(tuple.0, tuple.1, tuple.2)
     }
 }
-impl From<(Bidegree,usize)> for AdamsGenerator {
+impl From<(Bidegree, usize)> for AdamsGenerator {
     fn from(tuple: (Bidegree, usize)) -> Self {
         let (deg, idx) = tuple;
         let (s, t) = deg.into();
@@ -65,7 +60,7 @@ impl From<(Bidegree,usize)> for AdamsGenerator {
     }
 }
 
-impl From<AdamsGenerator> for (u32,i32,usize) {
+impl From<AdamsGenerator> for (u32, i32, usize) {
     fn from(gen: AdamsGenerator) -> Self {
         (gen.s(), gen.t(), gen.idx())
     }
@@ -87,10 +82,6 @@ impl Load for AdamsGenerator {
         let s = u32::load(buffer, &())?;
         let t = i32::load(buffer, &())?;
         let idx = usize::load(buffer, &())?;
-        Ok(AdamsGenerator {
-            s,
-            t,
-            idx,
-        })
+        Ok(AdamsGenerator { s, t, idx })
     }
 }

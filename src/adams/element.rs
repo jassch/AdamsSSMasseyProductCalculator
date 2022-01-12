@@ -1,16 +1,14 @@
-
 use super::Bidegree;
 
-use saveload::{Save, Load};
+use saveload::{Load, Save};
 
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
-use std::io::{Read, Write};
 use std::io;
+use std::io::{Read, Write};
 
 use fp::vector::FpVector;
-
 
 //type AdamsElement = (u32,i32,FpVector);
 
@@ -19,9 +17,9 @@ pub struct AdamsElement {
     /// resolution degree
     s: u32,
     /// internal degree
-    t: i32, 
+    t: i32,
     /// generator index
-    vec: FpVector, 
+    vec: FpVector,
 }
 
 impl AdamsElement {
@@ -35,17 +33,13 @@ impl AdamsElement {
         (self.s, self.t).into()
     }
     pub fn n(&self) -> i32 {
-        self.t-self.s as i32
+        self.t - self.s as i32
     }
     pub fn vec(&self) -> &FpVector {
         &self.vec
     }
     pub fn new(s: u32, t: i32, vec: FpVector) -> AdamsElement {
-        AdamsElement {
-            s,
-            t,
-            vec,
-        }
+        AdamsElement { s, t, vec }
     }
 }
 
@@ -55,7 +49,7 @@ impl Display for AdamsElement {
     }
 }
 
-impl From<(u32,i32,FpVector)> for AdamsElement {
+impl From<(u32, i32, FpVector)> for AdamsElement {
     fn from(tuple: (u32, i32, FpVector)) -> Self {
         Self::new(tuple.0, tuple.1, tuple.2)
     }
@@ -67,14 +61,14 @@ impl From<(u32, i32, &FpVector)> for AdamsElement {
     }
 }
 
-impl From<(Bidegree,FpVector)> for AdamsElement {
+impl From<(Bidegree, FpVector)> for AdamsElement {
     fn from(tuple: (Bidegree, FpVector)) -> Self {
         let (deg, v) = tuple;
         let (s, t) = deg.into();
         Self::new(s, t, v)
     }
 }
-impl From<(Bidegree,&FpVector)> for AdamsElement {
+impl From<(Bidegree, &FpVector)> for AdamsElement {
     fn from(tuple: (Bidegree, &FpVector)) -> Self {
         let (deg, v) = tuple;
         let (s, t) = deg.into();
@@ -82,12 +76,12 @@ impl From<(Bidegree,&FpVector)> for AdamsElement {
     }
 }
 
-impl From<AdamsElement> for (u32,i32,FpVector) {
+impl From<AdamsElement> for (u32, i32, FpVector) {
     fn from(elt: AdamsElement) -> Self {
         (elt.s, elt.t, elt.vec) // taken by move, so move out
     }
 }
-impl <'a> From<&'a AdamsElement> for (u32, i32, &'a FpVector) {
+impl<'a> From<&'a AdamsElement> for (u32, i32, &'a FpVector) {
     fn from(elt: &'a AdamsElement) -> Self {
         (elt.s(), elt.t(), elt.vec()) // use method .vec() to avoid moving
     }
@@ -109,10 +103,6 @@ impl Load for AdamsElement {
         let s = u32::load(buffer, &())?;
         let t = i32::load(buffer, &())?;
         let vec = FpVector::load(buffer, data)?;
-        Ok(AdamsElement {
-            s,
-            t,
-            vec,
-        })
+        Ok(AdamsElement { s, t, vec })
     }
 }

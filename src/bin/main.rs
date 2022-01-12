@@ -3,61 +3,55 @@
 // import library root
 use massey::*;
 
+use std::clone::Clone;
 use std::cmp::min;
-use std::io;
 use std::fs::File;
+
 use std::path::Path;
 use std::sync::Arc;
-use std::clone::Clone;
 
-use algebra::module::{Module};
+use algebra::module::Module;
 //use error::Error;
 use ext::chain_complex::{ChainComplex, FreeChainComplex};
-use ext::CCC;
-use ext::resolution_homomorphism::ResolutionHomomorphism;
 use ext::resolution::Resolution;
+use ext::resolution_homomorphism::ResolutionHomomorphism;
 use ext::utils::construct;
-use fp::vector::FpVector;
+use ext::CCC;
 use fp::matrix::Matrix;
+use fp::vector::FpVector;
 use saveload::Save;
 
-
-use adams::{Bidegree, AdamsElement, AdamsGenerator, AdamsMultiplication, MasseyProduct};
-
+use adams::{AdamsElement, AdamsMultiplication};
 
 //pub mod computation;
 //use computation::ComputationResult;
 
-
-
-/* need to store the products 
+/* need to store the products
  * need to be able to extract Massey productable triples
  * then need to compute the Massey products and store them.
- * should be extensible 
+ * should be extensible
  * note Massey productable triples can involve non generators
- * 
- * Multiplication is a bilinear map 
+ *
+ * Multiplication is a bilinear map
  * Adams(s1,t1) x Adams(s2,t2) -> Adams(s1+s2,t1+t2)
- * Idea 1: 
- * Store bilinear map as 3d matrix 
+ * Idea 1:
+ * Store bilinear map as 3d matrix
  * (normal 2d matrix with entries in Adams(s1+s2,t1+t2))
  * Idea 2:
- * Store as linear map from the tensor product 
+ * Store as linear map from the tensor product
  * Adams(s1,t1) \otimes Adams(s2,t2) -> Adams(s1+s2,t1+t2)
  * this is a normal matrix
- * Idea 3: 
- * For each generator x_{s1,t1,i} in (s1, t1) store the matrix 
+ * Idea 3:
+ * For each generator x_{s1,t1,i} in (s1, t1) store the matrix
  * for left multiplication x_{s1,t1,i}
  * (this is what we start with)
  * !!! We'll start with this !!! and adjust as necessary
- * 
- * Goal is to compute pairs 
- * (a,b) \in Adams(s1,t1)\times Adams(s2,t2) such that 
+ *
+ * Goal is to compute pairs
+ * (a,b) \in Adams(s1,t1)\times Adams(s2,t2) such that
  * mu(a,b) = 0
- * 
+ *
  */
-
-
 
 /*
 impl Save for AdamsMultiplication {
@@ -65,67 +59,72 @@ impl Save for AdamsMultiplication {
 }
 */
 
-
-
-
 fn main() -> error::Result {
     let save_file_name = String::from("../massey-prod-calc-data/S_2_resolution.data");
-    let resolution_saves_directory = String::from("../massey-prod-calc-data/S_2_resolution_incremental_data");
-    let multiplication_data_directory = String::from("../massey-prod-calc-data/S_2_multiplication_data");
-    let massey_product_data_directory = String::from("../massey-prod-calc-data/S_2_massey_prod_data");
+    let resolution_saves_directory =
+        String::from("../massey-prod-calc-data/S_2_resolution_incremental_data");
+    let multiplication_data_directory =
+        String::from("../massey-prod-calc-data/S_2_multiplication_data");
+    let massey_product_data_directory =
+        String::from("../massey-prod-calc-data/S_2_massey_prod_data");
 
     let massey_product_save_file = String::from("massey-prods-a-h0-h1-32-102.data");
 
-    let max_s=33;
-    let max_t=105;
+    let max_s = 33;
+    let max_t = 105;
     //let mult_max_s=15;
     //let mult_max_t=30;
     //let mult_with_max_s=15;
     //let mult_with_max_t=30;
 
-    
     println!("Loading and extending resolution...");
-    let mut adams_mult: AdamsMultiplication = AdamsMultiplication::new(save_file_name, Some(resolution_saves_directory), Some(multiplication_data_directory.clone()), Some(multiplication_data_directory), Some(massey_product_data_directory))?;
+    let mut adams_mult: AdamsMultiplication = AdamsMultiplication::new(
+        save_file_name,
+        Some(resolution_saves_directory),
+        Some(multiplication_data_directory.clone()),
+        Some(multiplication_data_directory),
+        Some(massey_product_data_directory),
+    )?;
     let prime = adams_mult.prime();
 
-    adams_mult.extend_resolution_to((max_s,max_t).into())?;
+    adams_mult.extend_resolution_to((max_s, max_t).into())?;
 
     fp::vector::initialize_limb_bit_index_table(adams_mult.resolution().prime());
 
     println!("Loading and computing multiplications...");
     match adams_mult.compute_all_multiplications() {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(err_info) => {
             eprintln!("{}", err_info);
         }
     }
 
-    let h0 = (1,1,FpVector::from_slice(prime, &vec![1])).into();
-    let h1 = (1,2,FpVector::from_slice(prime, &vec![1])).into();
-    let max_massey_deg = (32,102).into(); //(25,60).into();//(32, 96).into();
-    // compute Massey products 
-    // <-,h0,h1>
-    /*
-    println!("Computing kernels for multiplication by h0 = {}...", h0);
-    // first compute kernels for h0
-    let kers_h0 = match adams_mult.compute_kernels_right_multiplication(&h0, max_massey_deg) {
-        Ok(kers) => kers,
-        Err(err_info) => {
-            eprintln!("{}", err_info);
-            // fail
-            return error::from_string(err_info);
-            //std::process::exit(-1);
-        }
-    };
-    println!("Computing massey products <-,{},{}>...", h0, h1);
-    let (deg_computed, massey_h0_h1) = adams_mult.compute_massey_prods_for_pair(&kers_h0, max_massey_deg, &h0, &h1);
-    println!("Massey products <-,{},{}> computed through degree {} out of {}", h0, h1, deg_computed, max_massey_deg);
-    let shift_deg = (1,3).into();
-    for (a, rep, indet) in massey_h0_h1 {
-        let rep_ae: AdamsElement = (a.degree() + shift_deg, rep).into();
-        println!("<{}, h0, h1> = {} + {}", a, rep_ae, indet.matrix);
-    }
-    */
+    let h0 = (1, 1, FpVector::from_slice(prime, &[1])).into();
+    let h1 = (1, 2, FpVector::from_slice(prime, &[1])).into();
+    let max_massey_deg = (32, 102).into(); //(25,60).into();//(32, 96).into();
+                                           // compute Massey products
+                                           // <-,h0,h1>
+                                           /*
+                                           println!("Computing kernels for multiplication by h0 = {}...", h0);
+                                           // first compute kernels for h0
+                                           let kers_h0 = match adams_mult.compute_kernels_right_multiplication(&h0, max_massey_deg) {
+                                               Ok(kers) => kers,
+                                               Err(err_info) => {
+                                                   eprintln!("{}", err_info);
+                                                   // fail
+                                                   return error::from_string(err_info);
+                                                   //std::process::exit(-1);
+                                               }
+                                           };
+                                           println!("Computing massey products <-,{},{}>...", h0, h1);
+                                           let (deg_computed, massey_h0_h1) = adams_mult.compute_massey_prods_for_pair(&kers_h0, max_massey_deg, &h0, &h1);
+                                           println!("Massey products <-,{},{}> computed through degree {} out of {}", h0, h1, deg_computed, max_massey_deg);
+                                           let shift_deg = (1,3).into();
+                                           for (a, rep, indet) in massey_h0_h1 {
+                                               let rep_ae: AdamsElement = (a.degree() + shift_deg, rep).into();
+                                               println!("<{}, h0, h1> = {} + {}", a, rep_ae, indet.matrix);
+                                           }
+                                           */
     println!("Computing kernels for multiplication by h1 = {}...", h1);
     // first compute kernels for h0
     let kers_h1 = match adams_mult.compute_kernels_right_multiplication(&h1, max_massey_deg) {
@@ -138,8 +137,12 @@ fn main() -> error::Result {
         }
     };
     println!("Computing massey products <-,{},{}>...", h1, h0);
-    let (deg_computed, massey_h1_h0) = adams_mult.compute_massey_prods_for_pair(&kers_h1, max_massey_deg, &h1, &h0);
-    println!("Massey products <-,{},{}> computed through degree {} out of {}", h1, h0, deg_computed, max_massey_deg);
+    let (deg_computed, massey_h1_h0) =
+        adams_mult.compute_massey_prods_for_pair(&kers_h1, max_massey_deg, &h1, &h0);
+    println!(
+        "Massey products <-,{},{}> computed through degree {} out of {}",
+        h1, h0, deg_computed, max_massey_deg
+    );
     //let shift_deg = (1,3).into();
     let mut save_file = File::create(massey_product_save_file)?;
     deg_computed.save(&mut save_file)?;
@@ -150,7 +153,6 @@ fn main() -> error::Result {
         a.save(&mut save_file)?;
         prod.save(&mut save_file)?;
     }
-    
 
     //adams_mult.compute_multiplications(mult_max_s, mult_max_t, mult_with_max_s, mult_with_max_t);
     //adams_mult.brute_force_compute_all_massey_products((7,30).into());
@@ -178,10 +180,7 @@ fn main() -> error::Result {
     }
     */
 
-
     //adams_mult.possible_nontrivial_massey_products();
-
-
 
     Ok(())
 }
@@ -198,15 +197,15 @@ fn old_main() -> error::Result {
         };
         res_opt = construct("S_2", prev_save_file);
     }
-    let res_no_arc : Resolution<CCC> = res_opt?;
+    let res_no_arc: Resolution<CCC> = res_opt?;
     let res = Arc::new(res_no_arc);
     //let res_arc = Arc::new(res);
-    let max_s=30;
-    let max_t=60;
-    let mult_max_s=15;
-    let mult_max_t=30;
-    let mult_with_max_s=15;
-    let mult_with_max_t=30;
+    let max_s = 30;
+    let max_t = 60;
+    let mult_max_s = 15;
+    let mult_max_t = 30;
+    let mult_with_max_s = 15;
+    let mult_with_max_t = 30;
 
     let save_file: File = File::create(save_path)?;
 
@@ -223,8 +222,7 @@ fn old_main() -> error::Result {
 
     let mut file = std::io::BufWriter::new(save_file);
     res.save(&mut file)?;
-    
-    
+
     //let cx : Arc<CCC> = res.complex();
     for i in 0..max_s {
         let module = res.module(i);
@@ -244,44 +242,33 @@ fn old_main() -> error::Result {
         let module = res.module(i); // ith free module
         for j in 0..mult_max_t {
             let gens = &module.gen_names()[j];
-            for (idx,g) in gens.iter().enumerate() {
+            for (idx, g) in gens.iter().enumerate() {
                 // get the hom for the corresponding
                 // generator
                 // lift map dual to g, F_i -> FF_2
-                let hom = 
-                    ResolutionHomomorphism::new(
-                        format!("mult-by-{}",g),
-                        res.clone(),
-                        res.clone(),
-                        i, // s
-                        j  // t
-                    );
-                // matrix defining the first hom
-                let mut matrix = Matrix::new(
-                    res.prime(),
-                    module.number_of_gens_in_degree(j),
-                    1
+                let hom = ResolutionHomomorphism::new(
+                    format!("mult-by-{}", g),
+                    res.clone(),
+                    res.clone(),
+                    i, // s
+                    j, // t
                 );
-                matrix[0].set_entry(idx,1);
+                // matrix defining the first hom
+                let mut matrix = Matrix::new(res.prime(), module.number_of_gens_in_degree(j), 1);
+                matrix[0].set_entry(idx, 1);
                 // should send the generator to 1
                 // and everything else to 0
                 hom.extend_step(i, j, Some(&matrix));
                 // give it the first map
 
-                let domain_max_s = min(i+mult_with_max_s,max_s);
-                let domain_max_t = min(j+mult_with_max_t,max_t);
-                // extend hom            
+                let domain_max_s = min(i + mult_with_max_s, max_s);
+                let domain_max_t = min(j + mult_with_max_t, max_t);
+                // extend hom
                 #[cfg(not(feature = "concurrent"))]
-                hom.extend(
-                    domain_max_s, 
-                    domain_max_t
-                );
+                hom.extend(domain_max_s, domain_max_t);
 
                 #[cfg(feature = "concurrent")]
-                hom.extend_concurrent(
-                    domain_max_s, 
-                    domain_max_t, 
-                    &bucket);
+                hom.extend_concurrent(domain_max_s, domain_max_t, &bucket);
                 /*
                 #[cfg(not(feature = "concurrent"))]
                 hom.extend_all();
@@ -293,21 +280,21 @@ fn old_main() -> error::Result {
                 // now read off products
                 // product of g with g' is
                 // given by composing the lift of the ext class
-                // dual to g with the ext class dual to 
+                // dual to g with the ext class dual to
                 // g'
-                // and reading off 
+                // and reading off
                 // for now, let's just print based on the lift_hom code
 
                 /*
                 println!("hom mult-by-{} of degree ({},{}): ", g, hom.shift_s, hom.shift_t);
 
                 for (s, n, t) in hom.target.iter_stem() {
-                    if s + i >= hom.source.next_homological_degree() 
+                    if s + i >= hom.source.next_homological_degree()
                         || t + j > hom.source.module(s+i).max_computed_degree()
                         || s + i > domain_max_s
-                        || t + j > domain_max_t 
+                        || t + j > domain_max_t
                     {
-                        
+
                         continue; // out of range for computed stuff
                     }
                     let matrix = hom.get_map(s+i).hom_k(t);
@@ -321,17 +308,17 @@ fn old_main() -> error::Result {
                 for i2 in 0..mult_with_max_s {
                     let module2 = res.module(i2); // ith free module
                     for j2 in 0..mult_with_max_t {
-                        if res.number_of_gens_in_bidegree(i+i2,j+j2)==0 {
+                        if res.number_of_gens_in_bidegree(i + i2, j + j2) == 0 {
                             continue;
                         }
                         let gens2 = &module2.gen_names()[j2];
-                        let matrix = hom.get_map(i+i2).hom_k(j2);
-                        for (idx2,g2) in gens2.iter().enumerate() {
+                        let matrix = hom.get_map(i + i2).hom_k(j2);
+                        for (idx2, g2) in gens2.iter().enumerate() {
                             print!("{} in ({},{}) * {} in ({},{}) = ", g, i, j, g2, i2, j2);
-                            if matrix[idx2].len() == 0  {
+                            if matrix[idx2].is_empty() {
                                 println!("0 (trivial)");
                             } else {
-                                println!("{:?} in ({},{})", matrix[idx2], i+i2, j+j2);
+                                println!("{:?} in ({},{})", matrix[idx2], i + i2, j + j2);
                             }
                         }
                     }
