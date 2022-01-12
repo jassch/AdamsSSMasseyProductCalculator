@@ -3,7 +3,7 @@ use fp::prime::ValidPrime;
 use fp::matrix::Subspace;
 use fp::vector::FpVector;
 
-use saveload::{Load, Save};
+//use saveload::{Load, Save};
 
 use std::hash::Hash;
 use std::io;
@@ -137,6 +137,7 @@ impl<'a, K, V> From<SaveHM<'a, K, V>> for &'a HashMap<K, V> {
     }
 }
 
+/*
 impl<'a, K: Save, V: Save> Save for SaveHM<'a, K, V> {
     fn save(&self, buffer: &mut impl Write) -> io::Result<()> {
         let SaveHM(hm) = self;
@@ -148,6 +149,7 @@ impl<'a, K: Save, V: Save> Save for SaveHM<'a, K, V> {
         Ok(())
     }
 }
+*/
 
 /// Load returns a new owned data structure
 pub struct LoadHM<K, V>(pub HashMap<K, V>);
@@ -165,6 +167,7 @@ impl<K, V> From<LoadHM<K, V>> for HashMap<K, V> {
     }
 }
 
+/*
 impl<K: Load + Eq + Hash, V: Load> Load for LoadHM<K, V> {
     type AuxData = (K::AuxData, V::AuxData);
     fn load(buffer: &mut impl Read, data: &Self::AuxData) -> io::Result<Self> {
@@ -179,3 +182,4 @@ impl<K: Load + Eq + Hash, V: Load> Load for LoadHM<K, V> {
         Ok(LoadHM(result))
     }
 }
+*/

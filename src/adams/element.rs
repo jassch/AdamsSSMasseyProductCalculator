@@ -1,6 +1,6 @@
 use super::Bidegree;
 
-use saveload::{Load, Save};
+//use saveload::{Load, Save};
 
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -87,6 +87,7 @@ impl<'a> From<&'a AdamsElement> for (u32, i32, &'a FpVector) {
     }
 }
 
+/*
 impl Save for AdamsElement {
     fn save(&self, buffer: &mut impl Write) -> io::Result<()> {
         self.s.save(buffer)?;
@@ -106,3 +107,4 @@ impl Load for AdamsElement {
         Ok(AdamsElement { s, t, vec })
     }
 }
+*/

@@ -1,4 +1,4 @@
-use saveload::{Load, Save};
+//use saveload::{Load, Save};
 
 use std::io;
 use std::io::{Read, Write};
@@ -118,6 +118,7 @@ impl Display for AffineSpace {
         write!(f, "({} + {})", self.representative(), self.plane())
     }
 }
+/*
 impl Save for AffineSpace {
     fn save(&self, buffer: &mut impl Write) -> io::Result<()> {
         self.translation.save(buffer)?;
@@ -135,3 +136,4 @@ impl Load for AffineSpace {
         Ok(AffineSpace { translation, plane })
     }
 }
+*/

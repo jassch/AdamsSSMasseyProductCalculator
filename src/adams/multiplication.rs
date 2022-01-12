@@ -1,3 +1,4 @@
+use anyhow;
 
 use std::cmp::Ordering;
 //use std::cmp::min;
@@ -13,7 +14,7 @@ use std::collections::hash_map::HashMap;
 use algebra::module::homomorphism::ModuleHomomorphism;
 //use algebra::module::{Module};
 
-use ext::chain_complex::{ChainComplex, ChainHomotopy};
+use ext::chain_complex::{ChainComplex, FreeChainComplex, ChainHomotopy};
 use ext::CCC;
 use ext::resolution_homomorphism::ResolutionHomomorphism;
 use ext::resolution::Resolution;
@@ -25,7 +26,7 @@ use fp::matrix::Subspace;
 use fp::vector::FpVector;
 
 use std::io;
-use saveload::{Save, Load};
+//use saveload::{Save, Load};
 
 use super::{Bidegree, AdamsElement, AdamsGenerator, MasseyProduct};
 
@@ -175,16 +176,20 @@ impl AdamsMultiplication {
                 self.resolution.compute_through_bidegree_concurrent(s, t, &bucket);
             }
             
+            /*
             if self.has_resolution_data_directory() {
                 let file: File = File::create(self.resolution_file_path(cur_deg).expect("unexpectedly resolution file path was None"))?;
                 let mut buf_file = std::io::BufWriter::new(file);
                 self.resolution.save(&mut buf_file)?;
             }
+            */
 
         }
+        /*
         let file: File = File::create(&self.res_file_name)?;
         let mut buf_file = std::io::BufWriter::new(file);
         self.resolution.save(&mut buf_file)?;
+        */
         // update max degree
         self.max_s = deg.s;
         self.max_t = deg.t;
@@ -196,17 +201,19 @@ impl AdamsMultiplication {
         multiplication_data_directory: Option<String>, 
         resolution_homomorphism_data_directory: Option<String>,
         massey_product_data_directory: Option<String>
-        ) -> error::Result<AdamsMultiplication> 
+        ) -> anyhow::Result<AdamsMultiplication> 
     {
-        let save_path = Path::new(&res_file_name);
+        let save_path = PathBuf::from(&res_file_name);
         //let mut res_opt: Result<Resolution<CCC>,Error> = error::from_string("could not construct module");
         let res_opt;
         {
+            /*
             let prev_save_file = match File::open(save_path) {
                 Err(_why) => None,
                 Ok(file) => Some(file),
             };
-            res_opt = construct("S_2", prev_save_file);
+            */
+            res_opt = construct("S_2", Some(save_path));
         }
         let res_no_arc : Resolution<CCC> = res_opt?;
         let res = Arc::new(res_no_arc); 
@@ -288,7 +295,7 @@ impl AdamsMultiplication {
 
     pub fn num_gens(&self, s: u32, t: i32) -> Option<usize> {
         if self.resolution.has_computed_bidegree(s, t) {
-            Some(self.resolution.number_of_gens_in_bidegree(s, t))
+            Some(self.resolution.number_of_gens_in_bidegree(s,t))
         } else {
             None
         }
@@ -454,8 +461,12 @@ impl AdamsMultiplication {
 
 
 
+    
+    //TODO had to disable loading temporarily
     pub fn load_multiplications_for(&self, g: AdamsGenerator) 
         -> io::Result<Option<(Bidegree, HashMap<Bidegree, Matrix>)>> {
+        return Ok(None);
+        /*
         let path = match self.multiplication_file_path(g) {
             Some(path) => path,
             None => return Ok(None) // no directory provided
@@ -469,16 +480,21 @@ impl AdamsMultiplication {
             // this is actually fine though
             Ok(None)
         }
+        */
     }
 
+    //TODO disabled saving
     pub fn save_multiplications_for(&self, g: AdamsGenerator, computed_range: Bidegree, matrices: &HashMap<Bidegree, Matrix>) 
         -> io::Result<()>
     {
+        return Ok(());
+        /*
         let path = self.multiplication_file_path(g).ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No multiplication data directory, can't save multiplications."))?;
         let mut file = File::create(path)?;
         computed_range.save(&mut file)?;
         SaveHM(matrices).save(&mut file)?;
         Ok(())
+        */
     }
 
     pub fn compute_multiplication(&self, g: AdamsGenerator, mult_with_max: Bidegree) 
@@ -1125,7 +1141,8 @@ impl AdamsMultiplication {
 
         eprint!("computing nullhomotopy of {} o {}...", b, c);
         let homotopy = ChainHomotopy::new(
-            &*self.resolution,
+            // TODO
+            /*&*self.resolution,
             &*self.resolution,
             s2+s3,
             t2+t3,
@@ -1137,6 +1154,7 @@ impl AdamsMultiplication {
                     .compose(res_hom_2.get_map(mid_s))
                     .apply_to_basis_element(row.as_slice_mut(), 1, source_t, idx);
             }
+            */
         );
         
         for s in b_c_deg.s()..=max_tot_s {
@@ -1404,6 +1422,7 @@ impl AdamsMultiplication {
             let res_hom_3 = self.adams_elt_to_resoln_hom(ae3);
             res_hom_3.extend_through_stem(tot_s, tot_n);
 
+            // TODO
             let homotopy = ChainHomotopy::new(
                 &*self.resolution,
                 &*self.resolution,

@@ -3,7 +3,7 @@ use super::Bidegree;
 use crate::affinespace::AffineSpace;
 use crate::utils;
 
-use saveload::{Load, Save};
+//use saveload::{Load, Save};
 
 use std::cmp::{Ordering, PartialOrd};
 
@@ -156,6 +156,7 @@ impl <'a> From<&'a MasseyProduct> for (u32, i32, &'a FpVector) {
 }
 */
 
+/*
 impl Save for MasseyProduct {
     fn save(&self, buffer: &mut impl Write) -> io::Result<()> {
         self.s.save(buffer)?;
@@ -188,6 +189,7 @@ impl Load for MasseyProduct {
         })
     }
 }
+*/
 
 impl PartialEq<AffineSpace> for MasseyProduct {
     fn eq(&self, other: &AffineSpace) -> bool {

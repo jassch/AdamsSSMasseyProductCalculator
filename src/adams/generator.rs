@@ -1,6 +1,6 @@
 use super::Bidegree;
 
-use saveload::{Load, Save};
+//use saveload::{Load, Save};
 
 use std::io;
 use std::io::{Read, Write};
@@ -66,6 +66,7 @@ impl From<AdamsGenerator> for (u32, i32, usize) {
     }
 }
 
+/*
 impl Save for AdamsGenerator {
     fn save(&self, buffer: &mut impl Write) -> io::Result<()> {
         self.s.save(buffer)?;
@@ -85,3 +86,4 @@ impl Load for AdamsGenerator {
         Ok(AdamsGenerator { s, t, idx })
     }
 }
+*/

@@ -3,7 +3,7 @@ mod generator;
 mod masseyproduct;
 mod multiplication;
 
-use saveload::{Load, Save};
+//use saveload::{Load, Save};
 
 use std::io;
 use std::io::{Read, Write};
@@ -246,6 +246,7 @@ impl<'a> From<&'a Bidegree> for (&'a u32, &'a i32) {
     }
 }
 
+/*
 impl Save for Bidegree {
     fn save(&self, buffer: &mut impl Write) -> io::Result<()> {
         self.s.save(buffer)?;
@@ -263,6 +264,7 @@ impl Load for Bidegree {
         Ok(Bidegree { s, t })
     }
 }
+*/
 
 impl MeetSemilattice for Bidegree {
     fn meet(self, rhs: Bidegree) -> Bidegree {
