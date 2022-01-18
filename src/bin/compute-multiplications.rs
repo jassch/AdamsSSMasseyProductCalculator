@@ -5,6 +5,7 @@ use massey::*;
 use std::collections::hash_map::HashMap;
 
 use fp::matrix::Matrix;
+use anyhow::{anyhow,Result};
 
 use adams::{AdamsGenerator, AdamsMultiplication, Bidegree};
 
@@ -17,7 +18,7 @@ fn callback(
     Ok(())
 }
 
-fn main() -> error::Result {
+fn main() -> Result<()> {
     let save_file_name = String::from("../massey-prod-calc-data/S_2_resolution.data");
     //let resolution_saves_directory = String::from("../massey-prod-calc-data/S_2_resolution_incremental_data");
     let multiplication_data_directory =
@@ -34,7 +35,7 @@ fn main() -> error::Result {
     )?;
     let prime = adams_mult.prime();
 
-    fp::vector::initialize_limb_bit_index_table(prime);
+    //fp::vector::initialize_limb_bit_index_table(prime);
 
     println!("Computing multiplications...");
     match adams_mult.compute_all_multiplications_callback(true, &mut callback) {

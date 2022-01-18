@@ -5,6 +5,8 @@
 // import library root
 use massey::*;
 
+use anyhow::{anyhow, Result};
+
 use std::{clone::Clone, cmp::Ordering};
 
 use std::collections::hash_map::HashMap;
@@ -12,13 +14,12 @@ use std::fs::File;
 use std::io::BufReader;
 
 use fp::vector::FpVector;
-use saveload::Load;
 
 use adams::{AdamsElement, AdamsMultiplication, Bidegree, MasseyProduct};
 
 use affinespace::AffineSpace;
 
-fn main() -> error::Result {
+fn main() -> Result<()> {
     let save_file_name = String::from("../massey-prod-calc-data/S_2_resolution.data");
     let resolution_saves_directory =
         String::from("../massey-prod-calc-data/S_2_resolution_incremental_data");
@@ -45,7 +46,7 @@ fn main() -> error::Result {
 
     adams_mult.extend_resolution_to((max_s, max_t).into())?;
 
-    fp::vector::initialize_limb_bit_index_table(adams_mult.resolution().prime());
+    //fp::vector::initialize_limb_bit_index_table(adams_mult.resolution().prime());
 
     println!("Loading and computing multiplications...");
     match adams_mult.compute_all_multiplications() {
@@ -60,7 +61,8 @@ fn main() -> error::Result {
     //let max_massey_deg = (32,102).into();
 
     println!("Loading Massey products...");
-    let mut massey_h1_h0 = Vec::new();
+    let mut massey_h1_h0: Vec<(AdamsElement, MasseyProduct)> = Vec::new();
+    /*
     {
         let save_file = File::open(massey_product_save_file)?;
         let mut buf_save_file = BufReader::new(save_file);
@@ -72,6 +74,7 @@ fn main() -> error::Result {
             massey_h1_h0.push((a, prod));
         }
     }
+    */
     println!("{} products loaded", massey_h1_h0.len());
     // reorganize massey products by a's bidegree to make recognizing additive failure easier
     let mut massey_map: HashMap<Bidegree, HashMap<FpVector, MasseyProduct>> = HashMap::new();

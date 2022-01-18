@@ -12,7 +12,7 @@ use std::clone::Clone;
 use std::collections::hash_map::HashMap;
 
 use algebra::module::homomorphism::ModuleHomomorphism;
-//use algebra::module::{Module};
+use algebra::module::{Module};
 
 use ext::chain_complex::{ChainComplex, FreeChainComplex, ChainHomotopy};
 use ext::CCC;
@@ -1138,9 +1138,78 @@ impl AdamsMultiplication {
         let res_hom_3 = self.adams_elt_to_resoln_hom(c);
         res_hom_3.extend(max_tot_s, max_tot_t); // TODO concurrentify
         eprintln!(" done.");
-
+        // workout ordering
+        eprint!("constructing {} o {}...", b, c);
+        let mut composite = ResolutionHomomorphism::new(
+            "b o c".into(), 
+            self.resolution(),
+            self.resolution(),
+            s2+s3,
+            t2+t3
+        );
+        for s in 0..=max_s1 {
+            // composite map
+            let source = self.resolution().module(s+s2+s3);
+            let map_c = res_hom_3.get_map(s+s2+s3);
+            let intermediate = self.resolution().module(s+s2);
+            let map_b = res_hom_2.get_map(s+s2);
+            let target = self.resolution.module(s);
+            for t in 0..=max_t1 {
+                // compute composite matrix
+                // c goes from deg s+s2+s3, t+t2+t3 to 
+                // s+s2, t+t2
+                let num_source_gens = source.number_of_gens_in_degree(t+t2+t3);
+                // b goes from deg s+s2, t+t2 
+                // to s, t
+                let intermediate_dim = intermediate.dimension(t+t2);
+                let target_dim = target.dimension(t);
+                let mut composite_matrix = Matrix::new(
+                    self.prime(),
+                    target_dim,
+                    num_source_gens,
+                );
+                let mut intermediate = FpVector::new(self.prime(), intermediate_dim);
+                for i in 0..num_source_gens {
+                    map_c.apply_to_generator(&mut intermediate, 1, t+t2+t3, i);
+                    map_b.apply(composite_matrix[i].as_slice_mut(), 1, t+t2, intermediate.as_slice());
+                }
+                composite.extend_step(s+s2+s3,t+t2+t3,Some(&composite_matrix));
+            }
+        }
+        eprintln!("done.");
+        eprint!("constructing 0...");
+        let mut zero = ResolutionHomomorphism::new(
+            "zero".into(),
+            self.resolution(),
+            self.resolution(),
+            s2+s3,
+            t2+t3
+        );
+        for s in 0..=max_s1 {
+            // composite map
+            let source = self.resolution().module(s+s2+s3);
+            let target = self.resolution.module(s);
+            for t in 0..=max_t1 {
+                // compute composite matrix
+                // c goes from deg s+s2+s3, t+t2+t3 to 
+                // s+s2, t+t2
+                let num_source_gens = source.number_of_gens_in_degree(t+t2+t3);
+                // b goes from deg s+s2, t+t2 
+                // to s, t
+                let target_dim = target.dimension(t);
+                let mut zero_matrix = Matrix::new(
+                    self.prime(),
+                    target_dim,
+                    num_source_gens,
+                );
+                composite.extend_step(s+s2+s3,t+t2+t3,Some(&zero_matrix));
+            }
+        }
+        eprintln!("done.AsMut");
         eprint!("computing nullhomotopy of {} o {}...", b, c);
         let homotopy = ChainHomotopy::new(
+            Arc::new(composite),
+            Arc::new(zero)
             // TODO
             /*&*self.resolution,
             &*self.resolution,
@@ -1264,7 +1333,8 @@ impl AdamsMultiplication {
         
     }
     */
-
+ 
+    /*
     /// compute all massey products of massey-productable triples (a,b,c)  
     /// all of whose bidegrees are less than max_massey
     pub fn brute_force_compute_all_massey_products(&self, max_massey: Bidegree) {
@@ -1494,5 +1564,6 @@ impl AdamsMultiplication {
         println!("{} total triples", triples.len());
 
     }
+    */
 
 }
