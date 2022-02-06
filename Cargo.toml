@@ -16,4 +16,7 @@ anyhow = "1.0.0"
 rayon = { version = "1.5", optional = true }
 
 [features]
+default = ["concurrent", "zstd"]
+concurrent = ["ext/concurrent"]
 save-res = []
+zstd = ["ext/use-zstd"]
