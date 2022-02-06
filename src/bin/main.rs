@@ -53,8 +53,6 @@ fn main() -> anyhow::Result<()> {
     let massey_product_data_directory =
         String::from("../massey-prod-calc-data/S_2_massey_prod_data");
 
-    let massey_product_save_file = String::from("massey-prods-a-h0-h1-32-102.data");
-
     let max_s = 33;
     let max_t = 105;
     //let mult_max_s=15;
@@ -122,7 +120,7 @@ fn main() -> anyhow::Result<()> {
         }
     };
     println!("Computing massey products <-,{},{}>...", h1, h0);
-    let (deg_computed, massey_h1_h0) =
+    let (deg_computed, _) =
         adams_mult.compute_massey_prods_for_pair(&kers_h1, max_massey_deg, &h1, &h0);
     println!(
         "Massey products <-,{},{}> computed through degree {} out of {}",

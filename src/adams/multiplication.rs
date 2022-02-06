@@ -55,8 +55,6 @@ pub struct AdamsMultiplication {
     /// possibly need to go in to ext and add Save/Load to resolution homomorphisms
     multiplication_data_directory: Option<String>,
     resolution_homomorphism_data_directory: Option<String>,
-    /// hash map to store known (multiplicative) decompositions of elements
-    known_decompositions: HashMap<AdamsElement, Vec<(AdamsElement, AdamsElement)>>,
     /// directory to store massey product outputs
     massey_product_data_directory: Option<String>,
 }
@@ -249,7 +247,6 @@ impl AdamsMultiplication {
             multiplication_matrices: HashMap::new(),
             multiplication_data_directory,
             resolution_homomorphism_data_directory,
-            known_decompositions: HashMap::new(),
             massey_product_data_directory,
         };
 
@@ -411,10 +408,12 @@ impl AdamsMultiplication {
         self.resolution_homomorphism_data_directory.is_some()
     }
 
+    #[allow(dead_code)]
     fn multiplication_file_name(g: AdamsGenerator) -> String {
         format!("mult_s{}_t{}_{}.data", g.s(), g.t(), g.idx())
     }
 
+    #[allow(dead_code)]
     fn multiplication_file_path(&self, g: AdamsGenerator) -> Option<PathBuf> {
         match &self.multiplication_data_directory {
             Some(dir) => {
@@ -427,9 +426,12 @@ impl AdamsMultiplication {
         }
     }
 
+    #[allow(dead_code)]
     fn multiplication_hom_file_name(g: AdamsGenerator) -> String {
         format!("mult_s{}_t{}_{}_homomorphism.data", g.s(), g.t(), g.idx())
     }
+
+    #[allow(dead_code)]
     fn multiplication_hom_file_path(&self, g: AdamsGenerator) -> Option<PathBuf> {
         match &self.resolution_homomorphism_data_directory {
             Some(dir) => {
@@ -442,10 +444,12 @@ impl AdamsMultiplication {
         }
     }
 
+    #[allow(dead_code)]
     fn resolution_file_name(deg: Bidegree) -> String {
         format!("S_2_resolution_s{}_t{}.data", deg.s(), deg.t())
     }
 
+    #[allow(dead_code)]
     fn resolution_file_path(&self, deg: Bidegree) -> Option<PathBuf> {
         match &self.res_data_directory {
             Some(dir) => {
@@ -461,9 +465,9 @@ impl AdamsMultiplication {
     //TODO had to disable loading temporarily
     pub fn load_multiplications_for(
         &self,
-        g: AdamsGenerator,
+        _g: AdamsGenerator,
     ) -> io::Result<Option<(Bidegree, HashMap<Bidegree, Matrix>)>> {
-        return Ok(None);
+        Ok(None)
         /*
         let path = match self.multiplication_file_path(g) {
             Some(path) => path,
@@ -484,11 +488,11 @@ impl AdamsMultiplication {
     //TODO disabled saving
     pub fn save_multiplications_for(
         &self,
-        g: AdamsGenerator,
-        computed_range: Bidegree,
-        matrices: &HashMap<Bidegree, Matrix>,
+        _g: AdamsGenerator,
+        _computed_range: Bidegree,
+        _matrices: &HashMap<Bidegree, Matrix>,
     ) -> io::Result<()> {
-        return Ok(());
+        Ok(())
         /*
         let path = self.multiplication_file_path(g).ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No multiplication data directory, can't save multiplications."))?;
         let mut file = File::create(path)?;
@@ -1228,7 +1232,7 @@ impl AdamsMultiplication {
         eprintln!(" done.");
         // workout ordering
         eprint!("constructing {} o {}...", b, c);
-        let mut composite = ResolutionHomomorphism::new(
+        let composite = ResolutionHomomorphism::new(
             "b o c".into(),
             self.resolution(),
             self.resolution(),
@@ -1267,7 +1271,7 @@ impl AdamsMultiplication {
         }
         eprintln!("done.");
         eprint!("constructing 0...");
-        let mut zero = ResolutionHomomorphism::new(
+        let zero = ResolutionHomomorphism::new(
             "zero".into(),
             self.resolution(),
             self.resolution(),
@@ -1286,7 +1290,7 @@ impl AdamsMultiplication {
                 // b goes from deg s+s2, t+t2
                 // to s, t
                 let target_dim = target.dimension(t);
-                let mut zero_matrix = Matrix::new(self.prime(), target_dim, num_source_gens);
+                let zero_matrix = Matrix::new(self.prime(), target_dim, num_source_gens);
                 composite.extend_step(s + s2 + s3, t + t2 + t3, Some(&zero_matrix));
             }
         }
@@ -1368,7 +1372,7 @@ impl AdamsMultiplication {
                 let mut answer = vec![0; target_dim];
                 let mut nonzero = false;
                 eprintln!(" computing for {}...", vec_a);
-                for i in 0..target_dim {
+                for (i, ans) in answer.iter_mut().enumerate().take(target_dim) {
                     let output = htpy_map.output(tot_t, i);
                     eprintln!(
                         "output of htpy for ({}, {}) index {} = {}",
@@ -1377,10 +1381,10 @@ impl AdamsMultiplication {
                     for (k, entry) in vec_a.iter().enumerate() {
                         if entry != 0 {
                             //answer[i] += entry * output.entry(self.resolution.module(s1).generator_offset(t1,t1,k));
-                            answer[i] += entry * output.entry(offset_a + k);
+                            *ans += entry * output.entry(offset_a + k);
                         }
                     }
-                    if answer[i] != 0 {
+                    if *ans != 0 {
                         nonzero = true;
                     }
                 }
@@ -1393,12 +1397,22 @@ impl AdamsMultiplication {
                     {
                         Ok(indets) => indets,
                         Err(reason) => {
-                            eprintln!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
-                            s1, t1, vec_a,
-                            s2, t2, v2,
-                            s3, t3, v3,
-                            tot_s, tot_t, massey_rep,
-                            format!("{} could not compute indeterminacy because {}", "{??}", reason)
+                            eprintln!(
+                                "< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > =
+                                ({}, {}, {}) + {{??}} could not compute indeterminacy because {}",
+                                s1,
+                                t1,
+                                vec_a,
+                                s2,
+                                t2,
+                                v2,
+                                s3,
+                                t3,
+                                v3,
+                                tot_s,
+                                tot_t,
+                                massey_rep,
+                                reason,
                             );
                             // hopefully this doesn't happen
                             continue; // printed out, keep on going
