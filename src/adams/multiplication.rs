@@ -167,14 +167,7 @@ impl AdamsMultiplication {
             let (s,t) = cur_deg.into();
             eprintln!("Extending to degree {}", cur_deg);
 
-            #[cfg(not(feature = "concurrent"))]
             self.resolution.compute_through_bidegree(s, t);
-        
-            #[cfg(feature = "concurrent")]
-            {
-                let bucket = ext::utils::query_bucket();
-                self.resolution.compute_through_bidegree_concurrent(s, t, &bucket);
-            }
             
             /*
             if self.has_resolution_data_directory() {
@@ -556,22 +549,11 @@ impl AdamsMultiplication {
         let (compute_to_s, compute_to_t) = compute_to.into();
 
         // extend hom  
-              
-        #[cfg(not(feature = "concurrent"))]
+        
         hom.extend(
             compute_to_s+s, 
             compute_to_t+t
         );
-        
-
-        #[cfg(feature = "concurrent")]
-        {
-            let bucket = ext::utils::query_bucket();
-            hom.extend_concurrent(
-                compute_to_s+s, 
-                compute_to_t+t, 
-                &bucket);
-        }
 
         // hom has been extended
         // save the hom first
