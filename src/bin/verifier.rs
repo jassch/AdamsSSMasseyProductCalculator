@@ -5,13 +5,11 @@
 // import library root
 use massey::*;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 use std::{clone::Clone, cmp::Ordering};
 
 use std::collections::hash_map::HashMap;
-use std::fs::File;
-use std::io::BufReader;
 
 use fp::vector::FpVector;
 
@@ -27,9 +25,6 @@ fn main() -> Result<()> {
         String::from("../massey-prod-calc-data/S_2_multiplication_data");
     let massey_product_data_directory =
         String::from("../massey-prod-calc-data/S_2_massey_prod_data");
-
-    let massey_product_save_file = String::from("massey-prods-a-h0-h1-32-102.data");
-    let _massey_product_save_fixed_file = String::from("massey-prods-a-h0-h1-32-102-fixed.data");
 
     let max_s = 33;
     let max_t = 105;
@@ -61,7 +56,7 @@ fn main() -> Result<()> {
     //let max_massey_deg = (32,102).into();
 
     println!("Loading Massey products...");
-    let mut massey_h1_h0: Vec<(AdamsElement, MasseyProduct)> = Vec::new();
+    let massey_h1_h0: Vec<(AdamsElement, MasseyProduct)> = Vec::new();
     /*
     {
         let save_file = File::open(massey_product_save_file)?;

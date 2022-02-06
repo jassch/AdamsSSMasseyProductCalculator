@@ -1,38 +1,34 @@
 use anyhow;
 
 use std::cmp::Ordering;
-//use std::cmp::min;
-use std::io::Write;
-use std::fs::{File, DirBuilder};
+use std::fs::DirBuilder;
 
-//use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::clone::Clone;
 use std::collections::hash_map::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use algebra::module::homomorphism::ModuleHomomorphism;
-use algebra::module::{Module};
+use algebra::module::Module;
 
-use ext::chain_complex::{ChainComplex, FreeChainComplex, ChainHomotopy};
-use ext::CCC;
-use ext::resolution_homomorphism::ResolutionHomomorphism;
+use ext::chain_complex::{ChainComplex, ChainHomotopy, FreeChainComplex};
 use ext::resolution::Resolution;
+use ext::resolution_homomorphism::ResolutionHomomorphism;
 use ext::utils::construct;
+use ext::CCC;
 
-use fp::prime::ValidPrime;
 use fp::matrix::Matrix;
 use fp::matrix::Subspace;
+use fp::prime::ValidPrime;
 use fp::vector::FpVector;
 
 use std::io;
 //use saveload::{Save, Load};
 
-use super::{Bidegree, AdamsElement, AdamsGenerator, MasseyProduct};
+use super::{AdamsElement, AdamsGenerator, Bidegree, MasseyProduct};
 
-use crate::utils;
-use crate::utils::{AllVectorsIterator, LoadHM, SaveHM, get_max_defined_degree};
-use crate::lattice::{JoinSemilattice, MeetSemilattice, meet};
+use crate::lattice::{meet, JoinSemilattice, MeetSemilattice};
+use crate::utils::{get_max_defined_degree, AllVectorsIterator};
 
 //#[derive(Clone)]
 pub struct AdamsMultiplication {
@@ -41,35 +37,29 @@ pub struct AdamsMultiplication {
     /// filename storing resolution data
     res_file_name: String,
     ///directory to incrementally store resolutions to save progress
-    res_data_directory: Option<String>, 
+    res_data_directory: Option<String>,
     /// max_s w/ dimensions computed
     max_s: u32,
     /// max_t w/ dimensions computed
     max_t: i32,
-    /// keeps track of which degrees the multiplication by 
+    /// keeps track of which degrees the multiplication by
     /// a given basis element (s,t,index) is computed for
     //multiplication_range_computed:
     //    HashMap<AdamsGenerator, Bidegree>,
-    /// stores the multiplication matrices for each degree 
+    /// stores the multiplication matrices for each degree
     /// where we could compute the multiplication
-    multiplication_matrices: 
-        HashMap<AdamsGenerator, (Bidegree, HashMap<Bidegree, Matrix>)>,
+    multiplication_matrices: HashMap<AdamsGenerator, (Bidegree, HashMap<Bidegree, Matrix>)>,
     /// directory to store computed multiplications
     /// each file will have the multiplication matrices as computed so far
     /// it's not great. We'll have to see how we can make this more efficient
     /// possibly need to go in to ext and add Save/Load to resolution homomorphisms
     multiplication_data_directory: Option<String>,
     resolution_homomorphism_data_directory: Option<String>,
-    /// hash map to store known (multiplicative) decompositions of elements
-    known_decompositions:
-        HashMap<AdamsElement, Vec<(AdamsElement, AdamsElement)>>,
     /// directory to store massey product outputs
     massey_product_data_directory: Option<String>,
 }
 
-
 impl AdamsMultiplication {
-
     pub fn max_deg(&self) -> Bidegree {
         (self.max_s, self.max_t).into()
     }
@@ -82,7 +72,7 @@ impl AdamsMultiplication {
             // max nonzero s is between
             // (n-3)/2 and (n-1)/2
             // which is (n-1)/2 and (n-1)/2-1
-            let max_s_0 = (n-1)/2; // any index greater than this will definitely be 0
+            let max_s_0 = (n - 1) / 2; // any index greater than this will definitely be 0
             let n_res = n % 8;
             let max_s = if n_res == 0 || n_res == 5 || n_res == 7 {
                 max_s_0 - 1 // in these cases, we know that (n, max_s_0) will definitely be 0, so decrease max_s_0 by 1
@@ -92,18 +82,18 @@ impl AdamsMultiplication {
             Some(max_s)
         }
     }
-    
+
     pub fn is_stem_fully_computed(&self, n: u32) -> bool {
         match self.max_nonzero_s(n) {
             Some(s) => s <= self.max_s,
-            None => false
-        } 
+            None => false,
+        }
     }
 
     pub fn max_fully_computed_stem(&self) -> Option<u32> {
         // stem n is fully computed if we have computed
         // (n,0)..(n,s) for all s where n >= 2s+epsilon
-        // where epsilon is 1 for s 0,1 mod 4, 2 for s 2 mod 4, and 3 for s 3 mod 4 
+        // where epsilon is 1 for s 0,1 mod 4, 2 for s 2 mod 4, and 3 for s 3 mod 4
         // i.e. s where s <= (n-epsilon)/2
         // or for degrees (t,s) with t=s+n for all nonnegative s with t-s >= 2s+epsilon
         // or s with s < (t-epsilon)/3
@@ -122,31 +112,37 @@ impl AdamsMultiplication {
 
     fn ensure_resolution_data_directory_exists(&self) -> io::Result<bool> {
         if !self.has_resolution_data_directory() {
-            return Ok(false)
+            return Ok(false);
         }
-        DirBuilder::new()
-            .recursive(true)
-            .create(self.res_data_directory.clone().expect("resolution data directory unexpectedly None"))?;
+        DirBuilder::new().recursive(true).create(
+            self.res_data_directory
+                .clone()
+                .expect("resolution data directory unexpectedly None"),
+        )?;
         Ok(true)
     }
 
     fn ensure_multiplication_data_directory_exists(&self) -> io::Result<bool> {
         if !self.has_multiplication_data_directory() {
-            return Ok(false)
+            return Ok(false);
         }
-        DirBuilder::new()
-            .recursive(true)
-            .create(self.multiplication_data_directory.clone().expect("multiplication data directory unexpectedly None"))?;
+        DirBuilder::new().recursive(true).create(
+            self.multiplication_data_directory
+                .clone()
+                .expect("multiplication data directory unexpectedly None"),
+        )?;
         Ok(true)
     }
 
     fn ensure_resolution_homomorphism_data_directory_exists(&self) -> io::Result<bool> {
         if !self.has_resolution_homomorphism_data_directory() {
-            return Ok(false)
+            return Ok(false);
         }
-        DirBuilder::new()
-            .recursive(true)
-            .create(self.multiplication_data_directory.clone().expect("multiplication data directory unexpectedly None"))?;
+        DirBuilder::new().recursive(true).create(
+            self.multiplication_data_directory
+                .clone()
+                .expect("multiplication data directory unexpectedly None"),
+        )?;
         Ok(true)
     }
 
@@ -164,18 +160,11 @@ impl AdamsMultiplication {
                 *cur_deg.t_mut() += 1;
             }
 
-            let (s,t) = cur_deg.into();
+            let (s, t) = cur_deg.into();
             eprintln!("Extending to degree {}", cur_deg);
 
-            #[cfg(not(feature = "concurrent"))]
             self.resolution.compute_through_bidegree(s, t);
-        
-            #[cfg(feature = "concurrent")]
-            {
-                let bucket = ext::utils::query_bucket();
-                self.resolution.compute_through_bidegree_concurrent(s, t, &bucket);
-            }
-            
+
             /*
             if self.has_resolution_data_directory() {
                 let file: File = File::create(self.resolution_file_path(cur_deg).expect("unexpectedly resolution file path was None"))?;
@@ -183,7 +172,6 @@ impl AdamsMultiplication {
                 self.resolution.save(&mut buf_file)?;
             }
             */
-
         }
         /*
         let file: File = File::create(&self.res_file_name)?;
@@ -196,72 +184,35 @@ impl AdamsMultiplication {
         Ok(())
     }
 
-    pub fn new(res_file_name: String, 
-        res_data_directory: Option<String>, 
-        multiplication_data_directory: Option<String>, 
+    pub fn new(
+        res_file_name: String,
+        res_data_directory: Option<String>,
+        multiplication_data_directory: Option<String>,
         resolution_homomorphism_data_directory: Option<String>,
-        massey_product_data_directory: Option<String>
-        ) -> anyhow::Result<AdamsMultiplication> 
-    {
+        massey_product_data_directory: Option<String>,
+    ) -> anyhow::Result<AdamsMultiplication> {
         let save_path = PathBuf::from(&res_file_name);
-        //let mut res_opt: Result<Resolution<CCC>,Error> = error::from_string("could not construct module");
-        let res_opt;
-        {
-            /*
-            let prev_save_file = match File::open(save_path) {
-                Err(_why) => None,
-                Ok(file) => Some(file),
-            };
-            */
-            res_opt = construct("S_2", Some(save_path));
-        }
-        let res_no_arc : Resolution<CCC> = res_opt?;
-        let res = Arc::new(res_no_arc); 
-        // Nvm the following, we're going to move into the Arc here now
-        // borrow here so we still own the resolution at res_no_arc
-        //let res_arc = Arc::new(res);
-        
-        /*
-        let save_file: File = File::create(save_path)?;
-    
-        #[cfg(not(feature = "concurrent"))]
-        res.compute_through_bidegree(max_s, max_t);
-    
-        #[cfg(feature = "concurrent")]
-        {
-            let bucket = ext::utils::query_bucket();
-            res.compute_through_bidegree_concurrent(max_s, max_t, &bucket);
-        }
-    
-        println!("{}", res.graded_dimension_string());
-    
-        let mut file = std::io::BufWriter::new(save_file);
-        res.save(&mut file)?;
 
-        let mut num_gens: HashMap<Bidegree, usize> = HashMap::new();
-        for (s,_n,t) in res.iter_stem() {
-            num_gens.insert((s,t).into(), res.number_of_gens_in_bidegree(s,t));
-        }
-        */
-        // this is actually pretty bad as a method, but oh well. TODO
-        let (max_s, max_t) = get_max_defined_degree(res.clone());
-        eprintln!("max degree detected: ({}, {})", max_s, max_t);
-        
+        let (max_s, max_t) = get_max_defined_degree(&save_path);
+        eprintln!("Max degree detected: ({}, {})", max_s, max_t);
+
+        let res = Arc::new({
+            let mut res = construct("S_2", Some(save_path))?;
+            res.load_quasi_inverse = false;
+            res
+        });
+
+        res.compute_through_bidegree(max_s, max_t);
+
         let result = AdamsMultiplication {
             resolution: res,
             res_file_name,
             res_data_directory,
-            //num_gens: num_gens,
             max_s,
             max_t,
-            //multiplication_range_computed:
-            //    HashMap::new(),
-            multiplication_matrices: 
-                HashMap::new(),
+            multiplication_matrices: HashMap::new(),
             multiplication_data_directory,
             resolution_homomorphism_data_directory,
-            known_decompositions:
-                HashMap::new(),
             massey_product_data_directory,
         };
 
@@ -272,61 +223,64 @@ impl AdamsMultiplication {
         Ok(result)
     }
 
-    
-
     /// return Arc to the resolution
-    pub fn resolution(&self) -> Arc<Resolution<CCC>>{
+    pub fn resolution(&self) -> Arc<Resolution<CCC>> {
         self.resolution.clone()
     }
 
     pub fn prime(&self) -> ValidPrime {
         self.resolution.prime()
     }
-    
+
     /// return copy of the filename
     pub fn res_file_name(&self) -> String {
         self.res_file_name.clone()
     }
 
     /// return nonmutable reference
-    pub fn multiplication_matrices(&self) -> &HashMap<AdamsGenerator, (Bidegree, HashMap<Bidegree, Matrix>)> {
+    pub fn multiplication_matrices(
+        &self,
+    ) -> &HashMap<AdamsGenerator, (Bidegree, HashMap<Bidegree, Matrix>)> {
         &self.multiplication_matrices
     }
 
     pub fn num_gens(&self, s: u32, t: i32) -> Option<usize> {
         if self.resolution.has_computed_bidegree(s, t) {
-            Some(self.resolution.number_of_gens_in_bidegree(s,t))
+            Some(self.resolution.number_of_gens_in_bidegree(s, t))
         } else {
             None
         }
         //self.num_gens.get(&(s,t).into()).map(|u| -> usize { u.clone() })
     }
     pub fn num_gens_bidegree(&self, deg: Bidegree) -> Option<usize> {
-        let (s,t) = deg.into();
-        self.num_gens(s,t)
+        let (s, t) = deg.into();
+        self.num_gens(s, t)
     }
     pub fn multiplication_in_bounds(&self, deg1: Bidegree, deg2: Bidegree) -> bool {
-        let (s1,t1)=deg1.into();
-        let (s2,t2)=deg2.into();
+        let (s1, t1) = deg1.into();
+        let (s2, t2) = deg2.into();
         if (t1 < 0) || (t2 < 0) {
             false
         } else {
-            (s1+s2 < self.max_s) && (t1 + t2 < self.max_t)
+            (s1 + s2 < self.max_s) && (t1 + t2 < self.max_t)
         }
     }
 
-    pub fn adams_gen_to_resoln_hom(&self, g: AdamsGenerator) -> 
-        Result<ResolutionHomomorphism<Resolution<CCC>,Resolution<CCC>>, String> 
-    {
-        let (s,t,idx) = g.into();
+    pub fn adams_gen_to_resoln_hom(
+        &self,
+        g: AdamsGenerator,
+    ) -> Result<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>, String> {
+        let (s, t, idx) = g.into();
         let hom = ResolutionHomomorphism::new(
             format!("({},{},{})", s, t, idx),
             self.resolution(),
             self.resolution(),
             s,
-            t
+            t,
         );
-        let dim = self.num_gens(s, t).ok_or(format!("resolution not computed through ({}, {})", s,t))?;
+        let dim = self
+            .num_gens(s, t)
+            .ok_or(format!("resolution not computed through ({}, {})", s, t))?;
         let mut matrix = Matrix::new(self.prime(), dim, 1);
         matrix[idx].set_entry(0, 1);
         hom.extend_step(s, t, Some(&matrix));
@@ -334,18 +288,21 @@ impl AdamsMultiplication {
     }
 
     #[cfg(feature = "save-res")]
-    pub fn try_load_resoln_hom_for_adams_gen(&self, g: AdamsGenerator) -> 
-        io::Result<Option<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>>>
-    {
+    pub fn try_load_resoln_hom_for_adams_gen(
+        &self,
+        g: AdamsGenerator,
+    ) -> io::Result<Option<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>>> {
         let path = match self.multiplication_hom_file_path(g) {
-            Some (path) => path,
-            None => return Ok(None) // no directory provided
+            Some(path) => path,
+            None => return Ok(None), // no directory provided
         };
-        
+
         if path.exists() {
             let mut file = File::open(path)?;
-            let res_hom = <ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>> as Load>
-                ::load(&mut file, &(self.resolution.clone(), self.resolution.clone()))?;
+            let res_hom = <ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>> as Load>::load(
+                &mut file,
+                &(self.resolution.clone(), self.resolution.clone()),
+            )?;
             Ok(Some(res_hom))
         } else {
             // this is actually fine though
@@ -354,47 +311,56 @@ impl AdamsMultiplication {
     }
 
     #[cfg(not(feature = "save-res"))]
-    pub fn try_load_resoln_hom_for_adams_gen(&self, _g: AdamsGenerator) -> 
-        io::Result<Option<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>>>
-    {
+    pub fn try_load_resoln_hom_for_adams_gen(
+        &self,
+        _g: AdamsGenerator,
+    ) -> io::Result<Option<ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>>> {
         Ok(None)
     }
 
     #[cfg(feature = "save-res")]
-    pub fn save_resoln_hom_for_adams_gen(&self, g: AdamsGenerator, 
-        res_hom: &ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>) 
-        -> io::Result<()>
-    {
-        let path = self.multiplication_hom_file_path(g).ok_or(io::Error::new(io::ErrorKind::Other, "No resolution homomorphism data directory, can't save resolution homomorphisms."))?;
+    pub fn save_resoln_hom_for_adams_gen(
+        &self,
+        g: AdamsGenerator,
+        res_hom: &ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>,
+    ) -> io::Result<()> {
+        let path = self.multiplication_hom_file_path(g).ok_or(io::Error::new(
+            io::ErrorKind::Other,
+            "No resolution homomorphism data directory, can't save resolution homomorphisms.",
+        ))?;
         let mut file = File::create(path)?;
         res_hom.save(&mut file)
     }
 
     #[cfg(not(feature = "save-res"))]
-    pub fn save_resoln_hom_for_adams_gen(&self, _g: AdamsGenerator, 
-        _res_hom: &ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>) 
-        -> io::Result<()>
-    {
+    pub fn save_resoln_hom_for_adams_gen(
+        &self,
+        _g: AdamsGenerator,
+        _res_hom: &ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>>,
+    ) -> io::Result<()> {
         Ok(())
     }
 
-    pub fn adams_elt_to_resoln_hom(&self, e: &AdamsElement) -> ResolutionHomomorphism<Resolution<CCC>,Resolution<CCC>> {
-        let (s,t,v) = e.into();
+    pub fn adams_elt_to_resoln_hom(
+        &self,
+        e: &AdamsElement,
+    ) -> ResolutionHomomorphism<Resolution<CCC>, Resolution<CCC>> {
+        let (s, t, v) = e.into();
         let hom = ResolutionHomomorphism::new(
             format!("({},{},{})", s, t, v),
             self.resolution(),
             self.resolution(),
             s,
-            t
+            t,
         );
         let mut matrix = Matrix::new(v.prime(), v.len(), 1);
         for idx in 0..v.len() {
-            matrix[idx].set_entry(0,v.entry(idx));
+            matrix[idx].set_entry(0, v.entry(idx));
         }
         hom.extend_step(s, t, Some(&matrix));
         hom
     }
-    
+
     pub fn has_multiplication_data_directory(&self) -> bool {
         self.multiplication_data_directory.is_some()
     }
@@ -408,64 +374,66 @@ impl AdamsMultiplication {
         self.resolution_homomorphism_data_directory.is_some()
     }
 
+    #[allow(dead_code)]
     fn multiplication_file_name(g: AdamsGenerator) -> String {
         format!("mult_s{}_t{}_{}.data", g.s(), g.t(), g.idx())
     }
 
+    #[allow(dead_code)]
     fn multiplication_file_path(&self, g: AdamsGenerator) -> Option<PathBuf> {
         match &self.multiplication_data_directory {
             Some(dir) => {
-                let path: PathBuf = 
-                [dir.clone(), Self::multiplication_file_name(g)]
+                let path: PathBuf = [dir.clone(), Self::multiplication_file_name(g)]
                     .iter()
                     .collect();
                 Some(path)
             }
-            None => None
+            None => None,
         }
     }
 
+    #[allow(dead_code)]
     fn multiplication_hom_file_name(g: AdamsGenerator) -> String {
         format!("mult_s{}_t{}_{}_homomorphism.data", g.s(), g.t(), g.idx())
     }
-    fn multiplication_hom_file_path(&self, g:AdamsGenerator) -> Option<PathBuf> {
+
+    #[allow(dead_code)]
+    fn multiplication_hom_file_path(&self, g: AdamsGenerator) -> Option<PathBuf> {
         match &self.resolution_homomorphism_data_directory {
             Some(dir) => {
-                let path: PathBuf = 
-                [dir.clone(), Self::multiplication_hom_file_name(g)]
+                let path: PathBuf = [dir.clone(), Self::multiplication_hom_file_name(g)]
                     .iter()
                     .collect();
                 Some(path)
             }
-            None => None
+            None => None,
         }
     }
-    
+
+    #[allow(dead_code)]
     fn resolution_file_name(deg: Bidegree) -> String {
         format!("S_2_resolution_s{}_t{}.data", deg.s(), deg.t())
     }
 
+    #[allow(dead_code)]
     fn resolution_file_path(&self, deg: Bidegree) -> Option<PathBuf> {
-        
         match &self.res_data_directory {
             Some(dir) => {
-                let path: PathBuf = 
-                [dir.clone(), Self::resolution_file_name(deg)]
+                let path: PathBuf = [dir.clone(), Self::resolution_file_name(deg)]
                     .iter()
                     .collect();
                 Some(path)
             }
-            None => None
+            None => None,
         }
     }
 
-
-
-    
     //TODO had to disable loading temporarily
-    pub fn load_multiplications_for(&self, g: AdamsGenerator) 
-        -> io::Result<Option<(Bidegree, HashMap<Bidegree, Matrix>)>> {
-        return Ok(None);
+    pub fn load_multiplications_for(
+        &self,
+        _g: AdamsGenerator,
+    ) -> io::Result<Option<(Bidegree, HashMap<Bidegree, Matrix>)>> {
+        Ok(None)
         /*
         let path = match self.multiplication_file_path(g) {
             Some(path) => path,
@@ -484,10 +452,13 @@ impl AdamsMultiplication {
     }
 
     //TODO disabled saving
-    pub fn save_multiplications_for(&self, g: AdamsGenerator, computed_range: Bidegree, matrices: &HashMap<Bidegree, Matrix>) 
-        -> io::Result<()>
-    {
-        return Ok(());
+    pub fn save_multiplications_for(
+        &self,
+        _g: AdamsGenerator,
+        _computed_range: Bidegree,
+        _matrices: &HashMap<Bidegree, Matrix>,
+    ) -> io::Result<()> {
+        Ok(())
         /*
         let path = self.multiplication_file_path(g).ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No multiplication data directory, can't save multiplications."))?;
         let mut file = File::create(path)?;
@@ -497,17 +468,23 @@ impl AdamsMultiplication {
         */
     }
 
-    pub fn compute_multiplication(&self, g: AdamsGenerator, mult_with_max: Bidegree) 
-        -> Result<(Bidegree, HashMap<Bidegree, Matrix>), String> {
+    pub fn compute_multiplication(
+        &self,
+        g: AdamsGenerator,
+        mult_with_max: Bidegree,
+    ) -> Result<(Bidegree, HashMap<Bidegree, Matrix>), String> {
         eprintln!("Computing multiplication for {}", g);
         let (s, t, idx) = g.into();
         let g_deg = g.degree();
         let max_deg = self.max_deg();
         match g_deg.partial_cmp(&max_deg) {
             None | Some(Ordering::Greater) => {
-                return Err(format!("({}, {}, {}) is out of computed range: ({}, {})", s, t, idx, self.max_s, self.max_t))
-            },
-            _ => {},
+                return Err(format!(
+                    "({}, {}, {}) is out of computed range: ({}, {})",
+                    s, t, idx, self.max_s, self.max_t
+                ))
+            }
+            _ => {}
         };
         //let (rmax_s, rmax_t) = mult_with_max.into();
         let rmax_poss_s = self.max_s - s as u32;
@@ -517,22 +494,25 @@ impl AdamsMultiplication {
         //let actual_rmax_s = min(rmax_s, rmax_poss_s);
         //let actual_rmax_t = min(rmax_t, rmax_poss_t);
         let actual_rmax = mult_with_max.meet(rmax_poss);
-        
+
         let already_computed = match self.load_multiplications_for(g) {
             Ok(stuff) => stuff,
-            Err(e) => { return Err(e.to_string()); }
+            Err(e) => {
+                return Err(e.to_string());
+            }
         };
 
         let (partially_computed, computed_range, mut hm) = match already_computed {
             Some((range, hm)) => (true, range, hm),
-            None => (false, (0,0).into(), HashMap::new())
+            None => (false, (0, 0).into(), HashMap::new()),
         };
 
         let compute_to = if partially_computed {
             // determine what's left to compute
-            if actual_rmax <= computed_range { // done, can't compute more 
-                return Ok((computed_range, hm))
-            } 
+            if actual_rmax <= computed_range {
+                // done, can't compute more
+                return Ok((computed_range, hm));
+            }
             // this should be true, or we're going to run into problems
             // might remove this restriction later
             assert!(rmax_poss >= computed_range);
@@ -543,46 +523,29 @@ impl AdamsMultiplication {
         let hom = match self.try_load_resoln_hom_for_adams_gen(g) {
             Ok(Some(hom)) => hom,
             Err(_err) => {
-                // ignore io error and recompute 
+                // ignore io error and recompute
                 // TODO
                 self.adams_gen_to_resoln_hom(g)?
-            },
+            }
             // file not found, definitely recompute
-            Ok(None) => {
-                self.adams_gen_to_resoln_hom(g)?
-            },
+            Ok(None) => self.adams_gen_to_resoln_hom(g)?,
         };
 
         let (compute_to_s, compute_to_t) = compute_to.into();
 
-        // extend hom  
-              
-        #[cfg(not(feature = "concurrent"))]
-        hom.extend(
-            compute_to_s+s, 
-            compute_to_t+t
-        );
-        
+        // extend hom
 
-        #[cfg(feature = "concurrent")]
-        {
-            let bucket = ext::utils::query_bucket();
-            hom.extend_concurrent(
-                compute_to_s+s, 
-                compute_to_t+t, 
-                &bucket);
-        }
+        hom.extend(compute_to_s + s, compute_to_t + t);
 
         // hom has been extended
         // save the hom first
         if self.has_resolution_homomorphism_data_directory() {
             match self.save_resoln_hom_for_adams_gen(g, &hom) {
                 Ok(()) => (),
-                Err(err) => { 
+                Err(err) => {
                     eprintln!(
-                        "Failed to save resolution homomorphism for generator {}.\nError: {}", 
-                        g,
-                        err
+                        "Failed to save resolution homomorphism for generator {}.\nError: {}",
+                        g, err
                     );
                 }
             };
@@ -590,9 +553,8 @@ impl AdamsMultiplication {
 
         // then read off and insert the multiplication matrices
 
-
         // ok let's do the proper multiplications
-        for rhs in compute_to.iter_s_t() { 
+        for rhs in compute_to.iter_s_t() {
             // might want to iterate over stems, since these are the only nonzero ones, but for now
             // we just skip those with n negative
             if rhs.n() < 0 {
@@ -622,11 +584,11 @@ impl AdamsMultiplication {
                         g,
                         rhs,
                     ));
-                } // this is an error 
+                } // this is an error
             };
-            if dim_rhs==0 || dim_target==0 {
+            if dim_rhs == 0 || dim_target == 0 {
                 continue; // nothing in domain, or nothing in codomain, multiplication is trivially 0
-                // store nothing
+                          // store nothing
             }
             eprintln!("with {}", rhs);
             //let gens2 = &module2.gen_names()[j2];
@@ -636,33 +598,40 @@ impl AdamsMultiplication {
         }
         if self.has_multiplication_data_directory() {
             match self.save_multiplications_for(g, compute_to, &hm) {
-                Ok(_) => {},
-                Err(e) => { return Err(e.to_string()); }
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(e.to_string());
+                }
             };
         }
 
         Ok((compute_to, hm))
     }
 
-    
-
     pub fn compute_all_multiplications(&mut self) -> Result<(), String> {
         //self.compute_multiplications(self.max_s, self.max_t, self.max_s, self.max_t);
         self.compute_multiplications(self.max_deg(), self.max_deg())
     }
 
-    pub fn compute_multiplications(&mut self, lhs_max: Bidegree, rhs_max: Bidegree) -> Result<(), String> {
+    pub fn compute_multiplications(
+        &mut self,
+        lhs_max: Bidegree,
+        rhs_max: Bidegree,
+    ) -> Result<(), String> {
         let lhs_max = lhs_max.meet(self.max_deg()); // don't go out of range
         let rhs_max = rhs_max.meet(self.max_deg()); // don't go out of range
         for lhs in lhs_max.iter_s_t() {
             let dim = match self.num_gens_bidegree(lhs) {
                 Some(n) => n,
                 None => {
-                    return Err(format!("compute_multiplications: Expected {} to be computed!", lhs))
+                    return Err(format!(
+                        "compute_multiplications: Expected {} to be computed!",
+                        lhs
+                    ))
                 }
             };
             for idx in 0..dim {
-                let g = (lhs,idx).into();
+                let g = (lhs, idx).into();
                 let mult_data = self.compute_multiplication(g, rhs_max)?;
                 self.multiplication_matrices.insert(g, mult_data);
             }
@@ -673,19 +642,29 @@ impl AdamsMultiplication {
     /// boolean variable store determines whether or not to store the multiplication matrices
     /// callback called with adams generator, max bidegree for which multiplication matrices were computed
     /// and the hashmap of multiplication matrices for multiplication by the adams generator
-    pub fn compute_all_multiplications_callback<F>(&mut self, _store: bool, _callback: &mut F) 
-        -> Result<(), String>  where
-        F: FnMut(AdamsGenerator, Bidegree, &HashMap<Bidegree, Matrix>) -> Result<(), String>
+    pub fn compute_all_multiplications_callback<F>(
+        &mut self,
+        store: bool,
+        callback: &mut F,
+    ) -> Result<(), String>
+    where
+        F: FnMut(AdamsGenerator, Bidegree, &HashMap<Bidegree, Matrix>) -> Result<(), String>,
     {
-        self.compute_multiplications(self.max_deg(), self.max_deg())
+        self.compute_multiplications_callback(self.max_deg(), self.max_deg(), store, callback)
     }
 
     /// boolean variable store determines whether or not to store the multiplication matrices
     /// callback called with adams generator, max bidegree for which multiplication matrices were computed
     /// and the hashmap of multiplication matrices for multiplication by the adams generator
-    pub fn compute_multiplications_callback<F>(&mut self, lhs_max: Bidegree, rhs_max: Bidegree, store: bool, callback: &mut F) 
-        -> Result<(), String> where
-        F: FnMut(AdamsGenerator, Bidegree, &HashMap<Bidegree, Matrix>) -> Result<(), String>
+    pub fn compute_multiplications_callback<F>(
+        &mut self,
+        lhs_max: Bidegree,
+        rhs_max: Bidegree,
+        store: bool,
+        callback: &mut F,
+    ) -> Result<(), String>
+    where
+        F: FnMut(AdamsGenerator, Bidegree, &HashMap<Bidegree, Matrix>) -> Result<(), String>,
     {
         let lhs_max = lhs_max.meet(self.max_deg()); // don't go out of range
         let rhs_max = rhs_max.meet(self.max_deg()); // don't go out of range
@@ -693,11 +672,14 @@ impl AdamsMultiplication {
             let dim = match self.num_gens_bidegree(lhs) {
                 Some(n) => n,
                 None => {
-                    return Err(format!("compute_multiplications: Expected {} to be computed!", lhs))
+                    return Err(format!(
+                        "compute_multiplications: Expected {} to be computed!",
+                        lhs
+                    ))
                 }
             };
             for idx in 0..dim {
-                let g = (lhs,idx).into();
+                let g = (lhs, idx).into();
                 let mult_data = self.compute_multiplication(g, rhs_max)?;
                 callback(g, mult_data.0, &mult_data.1)?;
                 if store {
@@ -717,7 +699,9 @@ impl AdamsMultiplication {
             for t1 in s1 as i32..self.max_t {
                 let n1 = match self.num_gens(s1, t1) {
                     Some(n) => n,
-                    None => { continue; }
+                    None => {
+                        continue;
+                    }
                 };
                 if n1 == 0 {
                     continue; // empty bidegree, massey products will be uninteresting
@@ -726,44 +710,53 @@ impl AdamsMultiplication {
                     for t2 in s2 as i32..self.max_t {
                         let n2 = match self.num_gens(s2, t2) {
                             Some(n) => n,
-                            None => { continue; }
+                            None => {
+                                continue;
+                            }
                         };
                         if n2 == 0 {
                             continue; // empty bidegree, massey products will be uninteresting
                         }
 
-                        let shift_s=s1+s2-1;
-                        let shift_t=t1+t2;
+                        let shift_s = s1 + s2 - 1;
+                        let shift_t = t1 + t2;
 
                         if shift_s > self.max_s {
                             continue;
                         }
 
-                        for s3 in 1..self.max_s-shift_s {
-                            for t3 in s3 as i32..self.max_t-shift_t {
+                        for s3 in 1..self.max_s - shift_s {
+                            for t3 in s3 as i32..self.max_t - shift_t {
                                 let n3 = match self.num_gens(s3, t3) {
                                     Some(n) => n,
-                                    None => { continue; }
+                                    None => {
+                                        continue;
+                                    }
                                 };
                                 if n3 == 0 {
                                     continue; // empty bidegree, massey products will be uninteresting
                                 }
-                                let final_s = shift_s+s3;
-                                let final_t = shift_t+t3;
+                                let final_s = shift_s + s3;
+                                let final_t = shift_t + t3;
                                 let target_n = match self.num_gens(final_s, final_t) {
                                     Some(n) => n,
-                                    None => { continue; }
+                                    None => {
+                                        continue;
+                                    }
                                 };
                                 if target_n == 0 {
                                     continue;
                                 }
-                                if n1*n2*n3 > 1 {
+                                if n1 * n2 * n3 > 1 {
                                     println!("Potential massey products ({},{}) x ({}, {}) x ({}, {}) -> ({}, {})", s1, t1, s2, t2, s3, t3, final_s, final_t);
-                                    println!("Dimensions: {} x {} x {} -> {}", n1, n2, n3, target_n);
+                                    println!(
+                                        "Dimensions: {} x {} x {} -> {}",
+                                        n1, n2, n3, target_n
+                                    );
                                     not_all_dim_1 += 1;
                                 }
                                 count += 1;
-                                max_triples += n1*n2*n3;
+                                max_triples += n1 * n2 * n3;
                             }
                         }
                     }
@@ -775,7 +768,12 @@ impl AdamsMultiplication {
         println!("Max elt triples: {}", max_triples);
     }
 
-    pub fn left_multiplication_by(&self, l: Bidegree, vec: &FpVector, r: Bidegree) -> Result<Matrix, String> {
+    pub fn left_multiplication_by(
+        &self,
+        l: Bidegree,
+        vec: &FpVector,
+        r: Bidegree,
+    ) -> Result<Matrix, String> {
         let p = self.prime();
         let (ls, lt) = l.into();
         let (rs, rt) = r.into();
@@ -822,7 +820,12 @@ impl AdamsMultiplication {
         })
     }
 
-    pub fn right_multiplication_by(&self, r: Bidegree, vec: &FpVector, l: Bidegree) -> Result<Matrix, String> {
+    pub fn right_multiplication_by(
+        &self,
+        r: Bidegree,
+        vec: &FpVector,
+        l: Bidegree,
+    ) -> Result<Matrix, String> {
         // TODO right now I'm assuming that the multiplication in the Adams Spectral Sequence is commutative
         // so we can return
         self.left_multiplication_by(r, vec, l)
@@ -833,42 +836,57 @@ impl AdamsMultiplication {
     /// returns the pair of subspaces of  
     /// aR, Rc in R
     /// in the bidegree where <a,b,c> lives
-    pub fn compute_indeterminacy_of_massey_product(&self, a: &AdamsElement, b: Bidegree, c: &AdamsElement) -> Result<(Subspace, Subspace), String> {
+    pub fn compute_indeterminacy_of_massey_product(
+        &self,
+        a: &AdamsElement,
+        b: Bidegree,
+        c: &AdamsElement,
+    ) -> Result<(Subspace, Subspace), String> {
         let (s1, t1, v1) = a.into();
         let (s2, t2) = b.into();
         let (s3, t3, v3) = c.into();
-        let (s_left, t_left) = (s1 + s2 -1, t1+t2); 
-        let (s_right, t_right) = (s2 + s3 -1, t2+t3);
+        let (s_left, t_left) = (s1 + s2 - 1, t1 + t2);
+        let (s_right, t_right) = (s2 + s3 - 1, t2 + t3);
         let (s_tot, t_tot) = (s1 + s2 + s3 - 1, t1 + t2 + t3);
         let p = self.prime();
 
         let left_dim = match self.num_gens(s_left, t_left) {
             Some(n) => n,
-            None => { 
-                return Err(format!("Couldn't get dimension of ({}, {})", s_left, t_left));
+            None => {
+                return Err(format!(
+                    "Couldn't get dimension of ({}, {})",
+                    s_left, t_left
+                ));
             }
         };
         let right_dim = match self.num_gens(s_right, t_right) {
             Some(n) => n,
-            None => { 
-                return Err(format!("Couldn't get dimension of ({}, {})", s_right, t_right));
+            None => {
+                return Err(format!(
+                    "Couldn't get dimension of ({}, {})",
+                    s_right, t_right
+                ));
             }
         };
         let total_dim = match self.num_gens(s_tot, t_tot) {
             Some(n) => n,
-            None => { 
+            None => {
                 return Err(format!("Couldn't get dimension of ({}, {})", s_tot, t_tot));
             }
         };
 
         let l_indet = if right_dim == 0 {
-            Subspace::empty_space(p,total_dim)
+            Subspace::empty_space(p, total_dim)
         } else {
             // compute left multiplication
             // from (s_right, t_right) -> (s_tot, t_tot)
-            let left_indet = match self.left_multiplication_by((s1, t1).into(), v1, (s_right, t_right).into()) {
+            let left_indet = match self.left_multiplication_by(
+                (s1, t1).into(),
+                v1,
+                (s_right, t_right).into(),
+            ) {
                 Ok(lmat) => lmat,
-                Err(err) => { 
+                Err(err) => {
                     return Err(
                         format!(
                             "Couldn't compute the left multiplication ({}, {}, {})* : ({}, {}) -> ({}, {}) because {}", 
@@ -876,24 +894,29 @@ impl AdamsMultiplication {
                             s_right, t_right,
                             s_tot, t_tot,
                             err
-                        )); 
+                        ));
                 }
             };
-                
-            let (l_aug_start, mut l_indet_aug) = Matrix::augmented_from_vec(p, &left_indet.to_vec());
+
+            let (l_aug_start, mut l_indet_aug) =
+                Matrix::augmented_from_vec(p, &left_indet.to_vec());
             l_indet_aug.row_reduce();
-                
+
             l_indet_aug.compute_image(left_indet.columns(), l_aug_start)
         };
 
         let r_indet = if left_dim == 0 {
-            Subspace::empty_space(p,total_dim)
+            Subspace::empty_space(p, total_dim)
         } else {
             // compute left multiplication
             // from (s_right, t_right) -> (s_tot, t_tot)
-            let right_indet = match self.right_multiplication_by((s3, t3).into(), v3, (s_left, t_left).into()) {
+            let right_indet = match self.right_multiplication_by(
+                (s3, t3).into(),
+                v3,
+                (s_left, t_left).into(),
+            ) {
                 Ok(rmat) => rmat,
-                Err(err) => { 
+                Err(err) => {
                     return Err(
                         format!(
                             "Couldn't compute the right multiplication *({}, {}, {}) : ({}, {}) -> ({}, {}) because {}", 
@@ -901,24 +924,37 @@ impl AdamsMultiplication {
                             s_left, t_left,
                             s_tot, t_tot,
                             err
-                        )); 
+                        ));
                 }
             };
-                
-            let (r_aug_start, mut r_indet_aug) = Matrix::augmented_from_vec(p, &right_indet.to_vec());
+
+            let (r_aug_start, mut r_indet_aug) =
+                Matrix::augmented_from_vec(p, &right_indet.to_vec());
             r_indet_aug.row_reduce();
-                
+
             r_indet_aug.compute_image(right_indet.columns(), r_aug_start)
         };
 
         Ok((l_indet, r_indet))
     }
 
-    pub fn zero_massey_product_for(&self, a: &AdamsElement, b: Bidegree, c:&AdamsElement) -> Result<MasseyProduct, String> {
-        let (l_ind, r_ind) = self.compute_indeterminacy_of_massey_product(a,b,c)?;
+    pub fn zero_massey_product_for(
+        &self,
+        a: &AdamsElement,
+        b: Bidegree,
+        c: &AdamsElement,
+    ) -> Result<MasseyProduct, String> {
+        let (l_ind, r_ind) = self.compute_indeterminacy_of_massey_product(a, b, c)?;
         let bidegree = (a.s() + b.s() + c.s() - 1, a.t() + b.t() + c.t()).into();
-        let res_dim = self.num_gens_bidegree(bidegree).map(Ok).unwrap_or(Err("massey product resulting group not computed"))?;
-        Ok(MasseyProduct::new_ae(&(bidegree,FpVector::new(self.prime(), res_dim)).into(), l_ind, r_ind))
+        let res_dim = self
+            .num_gens_bidegree(bidegree)
+            .map(Ok)
+            .unwrap_or(Err("massey product resulting group not computed"))?;
+        Ok(MasseyProduct::new_ae(
+            &(bidegree, FpVector::new(self.prime(), res_dim)).into(),
+            l_ind,
+            r_ind,
+        ))
     }
 
     /// computes the maximum degree through which multiplication with an adams element is defined
@@ -927,45 +963,59 @@ impl AdamsMultiplication {
         self.multiplication_matrices.get(&gen).map(|(res, _)| *res)
     }
 
-    /// returns maximum degree such that all multiplications with generators living in multiplier_deg 
+    /// returns maximum degree such that all multiplications with generators living in multiplier_deg
     /// are defined through that degree. Assumes multiplier_deg <= self.max_deg()
     /// returns None if any prerequisites are not computed
-    pub fn multiplication_completely_computed_through_degree(&self, multiplier_deg: Bidegree) -> Option<Bidegree> {
+    pub fn multiplication_completely_computed_through_degree(
+        &self,
+        multiplier_deg: Bidegree,
+    ) -> Option<Bidegree> {
         let dim = match self.num_gens_bidegree(multiplier_deg) {
             Some(n) => n,
-            None => { 
+            None => {
                 // bidegree dimension not even computed
-                return None; 
+                return None;
             }
         };
         // max possible degree if all multiplications are computed
-        let mut res = (self.max_s - multiplier_deg.s(), self.max_t - multiplier_deg.t()).into();
+        let mut res = (
+            self.max_s - multiplier_deg.s(),
+            self.max_t - multiplier_deg.t(),
+        )
+            .into();
         for idx in 0..dim {
-            let max_for_idx = match self.multiplication_computed_through_degree((multiplier_deg, idx).into()) {
-                Some(deg) => deg,
-                None => {
-                    // multiplication with this generator not computed at all
-                    return None;
-                }
-            };
+            let max_for_idx =
+                match self.multiplication_computed_through_degree((multiplier_deg, idx).into()) {
+                    Some(deg) => deg,
+                    None => {
+                        // multiplication with this generator not computed at all
+                        return None;
+                    }
+                };
             res = meet(res, max_for_idx);
         }
         Some(res)
     }
 
     /// compute kernels for left multiplication by the given AdamsElement through the given Bidegree
-    pub fn compute_kernels_left_multiplication(&self,
+    pub fn compute_kernels_left_multiplication(
+        &self,
         multiplier: &AdamsElement,
-        max_degree_kernels: Bidegree) 
-        -> Result<(Bidegree, HashMap<Bidegree, Subspace>), String> 
-    {
-        eprintln!("compute_kernels_left_multiplication({}, {})", multiplier, max_degree_kernels);
+        max_degree_kernels: Bidegree,
+    ) -> Result<(Bidegree, HashMap<Bidegree, Subspace>), String> {
+        eprintln!(
+            "compute_kernels_left_multiplication({}, {})",
+            multiplier, max_degree_kernels
+        );
         let deg1 = multiplier.degree();
         let mut hm = HashMap::new();
         let max_mult_with_deg = match self.multiplication_completely_computed_through_degree(deg1) {
             Some(md) => md,
             None => {
-                return Err(format!("Multiplication not completely computed for bidegree {}", deg1));
+                return Err(format!(
+                    "Multiplication not completely computed for bidegree {}",
+                    deg1
+                ));
             }
         };
         let max_deg_for_kernels = meet(max_degree_kernels, max_mult_with_deg);
@@ -973,26 +1023,26 @@ impl AdamsMultiplication {
             let deg3 = deg1 + deg2;
             let dim2 = match self.num_gens_bidegree(deg2) {
                 Some(n) => n,
-                None => { 
+                None => {
                     // not computed. this shouldn't happen
-                    return Err(format!("Trying to compute kernel for {}.\nExpected multiply with degree {} to be computed", multiplier, deg2)); 
-                } 
+                    return Err(format!("Trying to compute kernel for {}.\nExpected multiply with degree {} to be computed", multiplier, deg2));
+                }
             };
             if dim2 == 0 {
                 continue; // no nonzero vectors, kernel is trivial
             }
             let dim3 = match self.num_gens_bidegree(deg3) {
                 Some(n) => n,
-                None => { 
+                None => {
                     // not computed. this shouldn't happen
-                    return Err(format!("Trying to compute kernel for {}.\nExpected product degree {} to be computed", multiplier, deg3)); 
-                } 
+                    return Err(format!("Trying to compute kernel for {}.\nExpected product degree {} to be computed", multiplier, deg3));
+                }
             };
             if dim3 == 0 {
                 // kernel is everything
                 // add and skip
                 hm.insert(deg2, Subspace::entire_space(self.prime(), dim2));
-                continue; 
+                continue;
             }
             eprintln!("computing nontrivial kernel for deg: {}", deg2);
             let lmul_v1 = match self.left_multiplication_by(deg1, multiplier.vec(), deg2) {
@@ -1001,7 +1051,8 @@ impl AdamsMultiplication {
                     continue;
                 }
             };
-            let (aug_start, mut lmul_v1_aug) = Matrix::augmented_from_vec(self.prime(), &lmul_v1.to_vec());
+            let (aug_start, mut lmul_v1_aug) =
+                Matrix::augmented_from_vec(self.prime(), &lmul_v1.to_vec());
             lmul_v1_aug.row_reduce();
             let kernel_lmul_v1 = lmul_v1_aug.compute_kernel(aug_start);
             if kernel_lmul_v1.dimension() == 0 {
@@ -1012,31 +1063,35 @@ impl AdamsMultiplication {
         }
         Ok((max_deg_for_kernels, hm))
     }
-    
+
     /// computes kernels for right multiplication by the given Adams element through the given bidegree
     /// redirects to compute_kernels_left_multiplication right now. TODO
-    pub fn compute_kernels_right_multiplication(&self,
+    pub fn compute_kernels_right_multiplication(
+        &self,
         multiplier: &AdamsElement,
-        max_degree_kernels: Bidegree) 
-        -> Result<(Bidegree, HashMap<Bidegree, Subspace>), String> 
-    {
-        eprintln!("compute_kernels_right_multiplication({}, {})", multiplier, max_degree_kernels);
+        max_degree_kernels: Bidegree,
+    ) -> Result<(Bidegree, HashMap<Bidegree, Subspace>), String> {
+        eprintln!(
+            "compute_kernels_right_multiplication({}, {})",
+            multiplier, max_degree_kernels
+        );
         self.compute_kernels_left_multiplication(multiplier, max_degree_kernels)
     }
 
-    /// computes kernels for left multiplication by all Adams elements through 
-    /// bidegree max_degree_multiplier with kernels computed through degree 
+    /// computes kernels for left multiplication by all Adams elements through
+    /// bidegree max_degree_multiplier with kernels computed through degree
     /// max_degree_kernel.
-    /// returns hashmap from Adams elements to pairs of a bidegree representing the maximum degree through which 
+    /// returns hashmap from Adams elements to pairs of a bidegree representing the maximum degree through which
     /// kernels are computed and a hashmap with kernels by Bidegree
-    /// if an in range pair of (nonzero) adams element and bidegree is not in the hashmaps, 
+    /// if an in range pair of (nonzero) adams element and bidegree is not in the hashmaps,
     /// it's because the kernel is 0
-    pub fn compute_all_kernels_left_multiplication(&self, 
-        max_degree_multiplier: Bidegree, 
-        max_degree_kernels: Bidegree) 
-        -> Result<HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)>, String>
-    {
-        let mut kernels: HashMap<AdamsElement, (Bidegree, HashMap<Bidegree,Subspace>)> = HashMap::new();
+    pub fn compute_all_kernels_left_multiplication(
+        &self,
+        max_degree_multiplier: Bidegree,
+        max_degree_kernels: Bidegree,
+    ) -> Result<HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)>, String> {
+        let mut kernels: HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)> =
+            HashMap::new();
         for deg1 in max_degree_multiplier.iter_s_t() {
             let dim1 = match self.num_gens_bidegree(deg1) {
                 Some(n) => n,
@@ -1056,58 +1111,61 @@ impl AdamsMultiplication {
         }
         Ok(kernels)
     }
-    /// computes kernels for right multiplication by all Adams elements through 
-    /// bidegree max_degree_multiplier with kernels computed through degree 
+    /// computes kernels for right multiplication by all Adams elements through
+    /// bidegree max_degree_multiplier with kernels computed through degree
     /// max_degree_kernel
-    /// 
+    ///
     /// currently implemented by just calling the compute_kernels_left_multiplication method
-    pub fn compute_all_kernels_right_multiplication(&self, 
-        max_degree_multiplier: Bidegree, 
-        max_degree_kernels: Bidegree) 
-        -> Result<HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)>, String>
-    {
+    pub fn compute_all_kernels_right_multiplication(
+        &self,
+        max_degree_multiplier: Bidegree,
+        max_degree_kernels: Bidegree,
+    ) -> Result<HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)>, String> {
         // TODO right now we're going to assume multiplication is commutative, since we're working with
-        // Adams SS for sphere at p=2. 
+        // Adams SS for sphere at p=2.
         self.compute_all_kernels_left_multiplication(max_degree_multiplier, max_degree_kernels)
     }
 
-    /// Write a new function to compute the massey products <a,b,c> given 
-    /// b and c for a less than max_deg_a. 
-    /// 
+    /// Write a new function to compute the massey products <a,b,c> given
+    /// b and c for a less than max_deg_a.
+    ///
     /// Should only compute one homotopy. Assumes bc=0.
-    /// 
-    /// Returns the maximum a degree through which Massey products were computed, as well as 
-    /// a Vector of triples (a, representative, subspace) for which the massey product does not 
+    ///
+    /// Returns the maximum a degree through which Massey products were computed, as well as
+    /// a Vector of triples (a, representative, subspace) for which the massey product does not
     /// contain 0. Any possible massey product in the range indicated by the bidegree which is not
     /// recorded contains 0.
-    /// 
+    ///
     /// takes the kernels for right multiplication by b as an argument
-    pub fn compute_massey_prods_for_pair(&self, 
-        kernels_mul_b: &(Bidegree, HashMap<Bidegree, Subspace>), 
-        max_deg_a: Bidegree, 
-        b: &AdamsElement, 
-        c: &AdamsElement) 
-        -> (Bidegree, Vec<(AdamsElement, MasseyProduct)>)
-    {
-        eprintln!("compute_massey_prods_for_pair(kernels, {}, {}, {})", max_deg_a, b, c);
+    pub fn compute_massey_prods_for_pair(
+        &self,
+        kernels_mul_b: &(Bidegree, HashMap<Bidegree, Subspace>),
+        max_deg_a: Bidegree,
+        b: &AdamsElement,
+        c: &AdamsElement,
+    ) -> (Bidegree, Vec<(AdamsElement, MasseyProduct)>) {
+        eprintln!(
+            "compute_massey_prods_for_pair(kernels, {}, {}, {})",
+            max_deg_a, b, c
+        );
         let mut ans = vec![];
         let (kernels_max_deg, ker_map) = kernels_mul_b;
         let b_deg = b.degree();
         let c_deg = c.degree();
         let b_c_deg = b_deg + c_deg;
-        let b_c_shift = match b_c_deg.try_subtract((1,0).into()) {
+        let b_c_shift = match b_c_deg.try_subtract((1, 0).into()) {
             Some(shift) => shift, // this is the degree difference |<a,b,c>| - |a|
             None => {
-                return ((0,0).into(), ans); // return empty data structure.
-                // this only happens if b and c have s degree 0, and therefore are either 0 or 1,
-                // which have no interesting massey products
+                return ((0, 0).into(), ans); // return empty data structure.
+                                             // this only happens if b and c have s degree 0, and therefore are either 0 or 1,
+                                             // which have no interesting massey products
             }
         };
         // the extra 1 in s degree is due to massey product living in degree deg_a + deg_b + deg_c - (1,0)
-        let complement = match (self.max_deg() + (1,0).into()).try_subtract(b_c_deg) {
+        let complement = match (self.max_deg() + (1, 0).into()).try_subtract(b_c_deg) {
             Some(cmpl) => cmpl,
             None => {
-                return ((0,0).into(), ans); // return empty data structure, since there are no valid a's to multiply with anyway
+                return ((0, 0).into(), ans); // return empty data structure, since there are no valid a's to multiply with anyway
             }
         };
         // complement represents maximum possible a degree we can compute with
@@ -1115,16 +1173,16 @@ impl AdamsMultiplication {
         eprintln!("determined max_a: (s,t)=({},{})", max_a.s(), max_a.t());
 
         let (max_s1, max_t1) = max_a.into();
-        let (s2,t2,v2) = b.into();
-        let (s3,t3,v3) = c.into();
+        let (s2, t2, v2) = b.into();
+        let (s3, t3, v3) = c.into();
         // largest degree increase from c to <a,b,c>
-        let (max_shift_s,max_shift_t) = (max_s1+s2-1, max_t1+t2); 
+        let (max_shift_s, max_shift_t) = (max_s1 + s2 - 1, max_t1 + t2);
         eprintln!("max_shift: (s,t)=({},{})", max_shift_s, max_shift_t);
         //let shift_n = shift_t-shift_s as i32;
         // largest total degree of <a,b,c>
-        let (max_tot_s, max_tot_t) = (max_shift_s+s3, max_shift_t+t3); 
+        let (max_tot_s, max_tot_t) = (max_shift_s + s3, max_shift_t + t3);
         eprintln!("max_tot: (s,t)=({},{})", max_tot_s, max_tot_t);
-        
+
         //let tot_n = tot_t-tot_s as i32;
 
         // for now we'll just compute the resolutions for b and c
@@ -1140,95 +1198,91 @@ impl AdamsMultiplication {
         eprintln!(" done.");
         // workout ordering
         eprint!("constructing {} o {}...", b, c);
-        let mut composite = ResolutionHomomorphism::new(
-            "b o c".into(), 
+        let composite = ResolutionHomomorphism::new(
+            "b o c".into(),
             self.resolution(),
             self.resolution(),
-            s2+s3,
-            t2+t3
+            s2 + s3,
+            t2 + t3,
         );
         for s in 0..=max_s1 {
             // composite map
-            let source = self.resolution().module(s+s2+s3);
-            let map_c = res_hom_3.get_map(s+s2+s3);
-            let intermediate = self.resolution().module(s+s2);
-            let map_b = res_hom_2.get_map(s+s2);
+            let source = self.resolution().module(s + s2 + s3);
+            let map_c = res_hom_3.get_map(s + s2 + s3);
+            let intermediate = self.resolution().module(s + s2);
+            let map_b = res_hom_2.get_map(s + s2);
             let target = self.resolution.module(s);
             for t in 0..=max_t1 {
                 // compute composite matrix
-                // c goes from deg s+s2+s3, t+t2+t3 to 
+                // c goes from deg s+s2+s3, t+t2+t3 to
                 // s+s2, t+t2
-                let num_source_gens = source.number_of_gens_in_degree(t+t2+t3);
-                // b goes from deg s+s2, t+t2 
+                let num_source_gens = source.number_of_gens_in_degree(t + t2 + t3);
+                // b goes from deg s+s2, t+t2
                 // to s, t
-                let intermediate_dim = intermediate.dimension(t+t2);
+                let intermediate_dim = intermediate.dimension(t + t2);
                 let target_dim = target.dimension(t);
-                let mut composite_matrix = Matrix::new(
-                    self.prime(),
-                    target_dim,
-                    num_source_gens,
-                );
+                let mut composite_matrix = Matrix::new(self.prime(), target_dim, num_source_gens);
                 let mut intermediate = FpVector::new(self.prime(), intermediate_dim);
                 for i in 0..num_source_gens {
-                    map_c.apply_to_generator(&mut intermediate, 1, t+t2+t3, i);
-                    map_b.apply(composite_matrix[i].as_slice_mut(), 1, t+t2, intermediate.as_slice());
+                    map_c.apply_to_generator(&mut intermediate, 1, t + t2 + t3, i);
+                    map_b.apply(
+                        composite_matrix[i].as_slice_mut(),
+                        1,
+                        t + t2,
+                        intermediate.as_slice(),
+                    );
                 }
-                composite.extend_step(s+s2+s3,t+t2+t3,Some(&composite_matrix));
+                composite.extend_step(s + s2 + s3, t + t2 + t3, Some(&composite_matrix));
             }
         }
         eprintln!("done.");
         eprint!("constructing 0...");
-        let mut zero = ResolutionHomomorphism::new(
+        let zero = ResolutionHomomorphism::new(
             "zero".into(),
             self.resolution(),
             self.resolution(),
-            s2+s3,
-            t2+t3
+            s2 + s3,
+            t2 + t3,
         );
         for s in 0..=max_s1 {
             // composite map
-            let source = self.resolution().module(s+s2+s3);
+            let source = self.resolution().module(s + s2 + s3);
             let target = self.resolution.module(s);
             for t in 0..=max_t1 {
                 // compute composite matrix
-                // c goes from deg s+s2+s3, t+t2+t3 to 
+                // c goes from deg s+s2+s3, t+t2+t3 to
                 // s+s2, t+t2
-                let num_source_gens = source.number_of_gens_in_degree(t+t2+t3);
-                // b goes from deg s+s2, t+t2 
+                let num_source_gens = source.number_of_gens_in_degree(t + t2 + t3);
+                // b goes from deg s+s2, t+t2
                 // to s, t
                 let target_dim = target.dimension(t);
-                let mut zero_matrix = Matrix::new(
-                    self.prime(),
-                    target_dim,
-                    num_source_gens,
-                );
-                composite.extend_step(s+s2+s3,t+t2+t3,Some(&zero_matrix));
+                let zero_matrix = Matrix::new(self.prime(), target_dim, num_source_gens);
+                composite.extend_step(s + s2 + s3, t + t2 + t3, Some(&zero_matrix));
             }
         }
         eprintln!("done.AsMut");
         eprint!("computing nullhomotopy of {} o {}...", b, c);
         let homotopy = ChainHomotopy::new(
             Arc::new(composite),
-            Arc::new(zero)
-            // TODO
-            /*&*self.resolution,
-            &*self.resolution,
-            s2+s3,
-            t2+t3,
-            |source_s, source_t, idx, row| {
-                let mid_s = source_s - s3;
+            Arc::new(zero), // TODO
+                            /*&*self.resolution,
+                            &*self.resolution,
+                            s2+s3,
+                            t2+t3,
+                            |source_s, source_t, idx, row| {
+                                let mid_s = source_s - s3;
 
-                // ought to represent res_hom_2 \circ res_hom_3, which makes sense
-                res_hom_3.get_map(source_s)
-                    .compose(res_hom_2.get_map(mid_s))
-                    .apply_to_basis_element(row.as_slice_mut(), 1, source_t, idx);
-            }
-            */
+                                // ought to represent res_hom_2 \circ res_hom_3, which makes sense
+                                res_hom_3.get_map(source_s)
+                                    .compose(res_hom_2.get_map(mid_s))
+                                    .apply_to_basis_element(row.as_slice_mut(), 1, source_t, idx);
+                            }
+                            */
         );
-        
+
         for s in b_c_deg.s()..=max_tot_s {
             eprint!(" extend htpy to ({},{})", s, max_tot_t);
-            homotopy.extend(s, max_tot_t); 
+            homotopy.extend(s, max_tot_t);
             // need the loop b/c extend uses stem degree
             // i.e. extends row s to t = max_n + s
             // so the first few rows end up too short
@@ -1270,30 +1324,33 @@ impl AdamsMultiplication {
             }
             eprint!("for deg {}... ", a_deg);
             let htpy_map = homotopy.homotopy(tot_s);
-            let offset_a = self.resolution.module(s1).generator_offset(t1, t1, 0); // where do generators 
-            // start in the basis after all the products and what
+            let offset_a = self.resolution.module(s1).generator_offset(t1, t1, 0); // where do generators
+                                                                                   // start in the basis after all the products and what
             for vec_a in AllVectorsIterator::new(ker_b_dim_a) {
                 if vec_a.is_zero() {
                     continue; // trivial massey products
                 }
                 // now htpy_map
-                // goes from the free module in degree tot_s to the one in degree a_deg  
+                // goes from the free module in degree tot_s to the one in degree a_deg
                 // need to compose with the map given by vec_a from a_deg to F2
-                // and then read off the values of the composite map 
+                // and then read off the values of the composite map
                 // on the generators in degree tot_s, tot_t
                 let mut answer = vec![0; target_dim];
                 let mut nonzero = false;
                 eprintln!(" computing for {}...", vec_a);
-                for i in 0..target_dim {
+                for (i, ans) in answer.iter_mut().enumerate().take(target_dim) {
                     let output = htpy_map.output(tot_t, i);
-                    eprintln!("output of htpy for ({}, {}) index {} = {}", tot_s, tot_t, i, output);
+                    eprintln!(
+                        "output of htpy for ({}, {}) index {} = {}",
+                        tot_s, tot_t, i, output
+                    );
                     for (k, entry) in vec_a.iter().enumerate() {
                         if entry != 0 {
-                            //answer[i] += entry * output.entry(self.resolution.module(s1).generator_offset(t1,t1,k)); 
-                            answer[i] += entry * output.entry(offset_a + k); 
+                            //answer[i] += entry * output.entry(self.resolution.module(s1).generator_offset(t1,t1,k));
+                            *ans += entry * output.entry(offset_a + k);
                         }
                     }
-                    if answer[i]!=0 {
+                    if *ans != 0 {
                         nonzero = true;
                     }
                 }
@@ -1302,21 +1359,33 @@ impl AdamsMultiplication {
                     let massey_rep = FpVector::from_slice(self.prime(), &answer);
                     eprintln!(" nonzero rep for <{},-,->={}", vec_a, massey_rep);
                     let ae1 = (a_deg, &vec_a).into();
-                    let indets = match self.compute_indeterminacy_of_massey_product(&ae1, b_deg, c) {
+                    let indets = match self.compute_indeterminacy_of_massey_product(&ae1, b_deg, c)
+                    {
                         Ok(indets) => indets,
                         Err(reason) => {
-                            eprintln!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
-                            s1, t1, vec_a, 
-                            s2, t2, v2, 
-                            s3, t3, v3,
-                            tot_s, tot_t, massey_rep,
-                            format!("{} could not compute indeterminacy because {}", "{??}", reason)
+                            eprintln!(
+                                "< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > =
+                                ({}, {}, {}) + {{??}} could not compute indeterminacy because {}",
+                                s1,
+                                t1,
+                                vec_a,
+                                s2,
+                                t2,
+                                v2,
+                                s3,
+                                t3,
+                                v3,
+                                tot_s,
+                                tot_t,
+                                massey_rep,
+                                reason,
                             );
                             // hopefully this doesn't happen
                             continue; // printed out, keep on going
                         }
                     };
-                    let massey_prod = MasseyProduct::new(tot_s, tot_t, massey_rep, indets.0, indets.1);
+                    let massey_prod =
+                        MasseyProduct::new(tot_s, tot_t, massey_rep, indets.0, indets.1);
                     if massey_prod.contains_zero() {
                         continue; // massey product is trivial, ignore it
                     }
@@ -1330,12 +1399,12 @@ impl AdamsMultiplication {
 
     /*
     pub fn compute_massey_products(&self, max_massey: Bidegree) {
-        
+
     }
     */
- 
+
     /*
-    /// compute all massey products of massey-productable triples (a,b,c)  
+    /// compute all massey products of massey-productable triples (a,b,c)
     /// all of whose bidegrees are less than max_massey
     pub fn brute_force_compute_all_massey_products(&self, max_massey: Bidegree) {
         let mut zero_massey_output = match File::create("zero-massey-prods.txt") {
@@ -1452,7 +1521,7 @@ impl AdamsMultiplication {
                                         }
                                         let hm_kers_2 = match kernels.get(&bideg_pr_r) {
                                             Some(hm_kers_2) => { hm_kers_2 },
-                                            None => { continue; } // no interesting vectors/kernels in this 
+                                            None => { continue; } // no interesting vectors/kernels in this
                                             // bidegree pair
                                         };
                                         let ker_v2 = match hm_kers_2.get(&v2) {
@@ -1519,20 +1588,20 @@ impl AdamsMultiplication {
 
                     }
                 }
-                if answer[i]!=0 { 
+                if answer[i]!=0 {
                     nonzero=true;
                 }
             }
-            //for 
-            
+            //for
+
             if nonzero {
                 let massey_rep = FpVector::from_slice(v1.prime(), &answer);
                 let indet = match self.compute_indeterminacy_of_massey_product(ae1, (s2, t2).into(), ae3) {
                     Ok((l_sub,r_sub)) => utils::subspace_sum(&l_sub, &r_sub),
                     Err(reason) => {
-                        println!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
-                            s1, t1, v1, 
-                            s2, t2, v2, 
+                        println!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}",
+                            s1, t1, v1,
+                            s2, t2, v2,
                             s3, t3, v3,
                             tot_s, tot_t, massey_rep,
                             format!("{} could not compute indeterminacy because {}", "{??}", reason)
@@ -1541,9 +1610,9 @@ impl AdamsMultiplication {
                         continue; // printed out, keep on going
                     }
                 };
-                print!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}", 
-                    s1, t1, v1, 
-                    s2, t2, v2, 
+                print!("< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = ({}, {}, {}) + {:?}",
+                    s1, t1, v1,
+                    s2, t2, v2,
                     s3, t3, v3,
                     tot_s, tot_t, massey_rep,
                     indet
@@ -1554,9 +1623,9 @@ impl AdamsMultiplication {
                     println!();
                 }
             } else {
-                let _ = writeln!(zero_massey_output, "< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = 0 + did not compute indeterminacy", 
-                    s1, t1, v1, 
-                    s2, t2, v2, 
+                let _ = writeln!(zero_massey_output, "< ({}, {}, {}), ({}, {}, {}), ({}, {}, {}) > = 0 + did not compute indeterminacy",
+                    s1, t1, v1,
+                    s2, t2, v2,
                     s3, t3, v3,
                 );
             }
@@ -1565,5 +1634,4 @@ impl AdamsMultiplication {
 
     }
     */
-
 }

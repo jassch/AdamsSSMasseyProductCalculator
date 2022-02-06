@@ -3,27 +3,10 @@
 // import library root
 use massey::*;
 
-use std::clone::Clone;
-use std::cmp::min;
-use std::fs::File;
-
-use std::path::Path;
-use std::sync::Arc;
-
-use algebra::module::Module;
-//use error::Error;
-//use anyhow;
-use anyhow::{anyhow, Result};
-use ext::chain_complex::{ChainComplex, FreeChainComplex};
-use ext::resolution::Resolution;
-use ext::resolution_homomorphism::ResolutionHomomorphism;
-use ext::utils::construct;
-use ext::CCC;
-use fp::matrix::Matrix;
 use fp::vector::FpVector;
-//use saveload::Save;
+use std::clone::Clone;
 
-use adams::{AdamsElement, AdamsMultiplication};
+use adams::AdamsMultiplication;
 
 //pub mod computation;
 //use computation::ComputationResult;
@@ -69,8 +52,6 @@ fn main() -> anyhow::Result<()> {
         String::from("../massey-prod-calc-data/S_2_multiplication_data");
     let massey_product_data_directory =
         String::from("../massey-prod-calc-data/S_2_massey_prod_data");
-
-    let massey_product_save_file = String::from("massey-prods-a-h0-h1-32-102.data");
 
     let max_s = 33;
     let max_t = 105;
@@ -139,14 +120,14 @@ fn main() -> anyhow::Result<()> {
         }
     };
     println!("Computing massey products <-,{},{}>...", h1, h0);
-    let (deg_computed, massey_h1_h0) =
+    let (deg_computed, _) =
         adams_mult.compute_massey_prods_for_pair(&kers_h1, max_massey_deg, &h1, &h0);
     println!(
         "Massey products <-,{},{}> computed through degree {} out of {}",
         h1, h0, deg_computed, max_massey_deg
     );
     //let shift_deg = (1,3).into();
-    
+
     // save stuff, disable for now, TODO
     /*
     let mut save_file = File::create(massey_product_save_file)?;
@@ -190,4 +171,3 @@ fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
