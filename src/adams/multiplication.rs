@@ -192,56 +192,24 @@ impl AdamsMultiplication {
         massey_product_data_directory: Option<String>,
     ) -> anyhow::Result<AdamsMultiplication> {
         let save_path = PathBuf::from(&res_file_name);
-        let res_opt;
-        {
-            /*
-            let prev_save_file = match File::open(save_path) {
-                Err(_why) => None,
-                Ok(file) => Some(file),
-            };
-            */
-            res_opt = construct("S_2", Some(save_path.clone()));
-        }
-        let res_no_arc: Resolution<CCC> = res_opt?;
-        let res = Arc::new(res_no_arc);
-        // Nvm the following, we're going to move into the Arc here now
-        // borrow here so we still own the resolution at res_no_arc
-        //let res_arc = Arc::new(res);
 
-        /*
-        let save_file: File = File::create(save_path)?;
-
-        #[cfg(not(feature = "concurrent"))]
-        res.compute_through_bidegree(max_s, max_t);
-
-        #[cfg(feature = "concurrent")]
-        {
-            let bucket = ext::utils::query_bucket();
-            res.compute_through_bidegree_concurrent(max_s, max_t, &bucket);
-        }
-
-        println!("{}", res.graded_dimension_string());
-
-        let mut file = std::io::BufWriter::new(save_file);
-        res.save(&mut file)?;
-
-        let mut num_gens: HashMap<Bidegree, usize> = HashMap::new();
-        for (s,_n,t) in res.iter_stem() {
-            num_gens.insert((s,t).into(), res.number_of_gens_in_bidegree(s,t));
-        }
-        */
-        let (max_s, max_t) = get_max_defined_degree(save_path);
+        let (max_s, max_t) = get_max_defined_degree(save_path.clone());
         eprintln!("Max degree detected: ({}, {})", max_s, max_t);
+
+        let res = Arc::new({
+            let mut res = construct("S_2", Some(save_path))?;
+            res.load_quasi_inverse = false;
+            res
+        });
+
+        res.compute_through_bidegree(max_s, max_t);
 
         let result = AdamsMultiplication {
             resolution: res,
             res_file_name,
             res_data_directory,
-            //num_gens: num_gens,
             max_s,
             max_t,
-            //multiplication_range_computed:
-            //    HashMap::new(),
             multiplication_matrices: HashMap::new(),
             multiplication_data_directory,
             resolution_homomorphism_data_directory,
