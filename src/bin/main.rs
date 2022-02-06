@@ -146,7 +146,7 @@ fn main() -> anyhow::Result<()> {
         h1, h0, deg_computed, max_massey_deg
     );
     //let shift_deg = (1,3).into();
-    
+
     // save stuff, disable for now, TODO
     /*
     let mut save_file = File::create(massey_product_save_file)?;
@@ -190,4 +190,3 @@ fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-

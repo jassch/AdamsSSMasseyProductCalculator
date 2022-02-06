@@ -4,8 +4,8 @@ use massey::*;
 
 use std::collections::hash_map::HashMap;
 
+use anyhow::{anyhow, Result};
 use fp::matrix::Matrix;
-use anyhow::{anyhow,Result};
 
 use adams::{AdamsGenerator, AdamsMultiplication, Bidegree};
 
