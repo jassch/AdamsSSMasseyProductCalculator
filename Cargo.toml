@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ext = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2" }
+ext = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2", default-features = false }
 algebra = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2", default-features = false, features = ["json"] }
 bivec = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2" }
 fp = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2", default-features = false }
