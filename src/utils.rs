@@ -1,13 +1,7 @@
-use fp::prime::ValidPrime;
-//use fp::matrix::Matrix;
 use fp::matrix::Subspace;
+use fp::prime::ValidPrime;
 use fp::vector::FpVector;
 
-//use saveload::{Load, Save};
-
-use std::hash::Hash;
-use std::io;
-use std::io::{Read, Write};
 use std::sync::Arc;
 
 use ext::chain_complex::ChainComplex;

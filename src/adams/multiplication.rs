@@ -1,14 +1,11 @@
 use anyhow;
 
 use std::cmp::Ordering;
-//use std::cmp::min;
-use std::fs::{DirBuilder, File};
-use std::io::Write;
+use std::fs::DirBuilder;
 
-//use std::error::Error;
 use std::clone::Clone;
 use std::collections::hash_map::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use algebra::module::homomorphism::ModuleHomomorphism;
@@ -31,8 +28,7 @@ use std::io;
 use super::{AdamsElement, AdamsGenerator, Bidegree, MasseyProduct};
 
 use crate::lattice::{meet, JoinSemilattice, MeetSemilattice};
-use crate::utils;
-use crate::utils::{get_max_defined_degree, AllVectorsIterator, LoadHM, SaveHM};
+use crate::utils::{get_max_defined_degree, AllVectorsIterator};
 
 //#[derive(Clone)]
 pub struct AdamsMultiplication {

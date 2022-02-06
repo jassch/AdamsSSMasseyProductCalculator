@@ -4,7 +4,7 @@ use massey::*;
 
 use std::collections::hash_map::HashMap;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use fp::matrix::Matrix;
 
 use adams::{AdamsGenerator, AdamsMultiplication, Bidegree};
@@ -33,7 +33,6 @@ fn main() -> Result<()> {
         None,
         None,
     )?;
-    let prime = adams_mult.prime();
 
     //fp::vector::initialize_limb_bit_index_table(prime);
 
