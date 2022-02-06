@@ -12,8 +12,10 @@ bivec = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2" }
 fp = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2", default-features = false }
 once = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2" }
 query = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2" }
+
 anyhow = "1.0.0"
 rayon = { version = "1.5", optional = true }
+regex = "1.5.4"
 
 [features]
 default = ["concurrent", "zstd"]

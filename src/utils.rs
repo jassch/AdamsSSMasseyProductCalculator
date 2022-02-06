@@ -1,12 +1,9 @@
 use fp::matrix::Subspace;
 use fp::prime::ValidPrime;
 use fp::vector::FpVector;
+use regex::Regex;
 
-use std::sync::Arc;
-
-use ext::chain_complex::ChainComplex;
-use ext::resolution::Resolution;
-use ext::CCC;
+use std::path::PathBuf;
 
 use std::collections::HashMap;
 
@@ -47,16 +44,33 @@ pub fn subspace_equality(lsub: &Subspace, rsub: &Subspace) -> bool {
     true
 }
 
-pub fn get_max_defined_degree(res: Arc<Resolution<CCC>>) -> (u32, i32) {
-    let mut s = 0;
-    let mut t = 0;
-    while res.has_computed_bidegree(s + 1, t) {
-        s += 1;
+pub fn get_max_defined_degree(save_path: PathBuf) -> (u32, i32) {
+    fn with_result(save_path: PathBuf) -> anyhow::Result<(u32, i32)> {
+        let diff_dir = save_path.join("differentials");
+        let s_t_regex = Regex::new(r"(?P<s>\d+)_(?P<t>\d+)_differential").unwrap();
+        let mut max = (0, 0);
+        for differential in std::fs::read_dir(diff_dir)? {
+            let differential = differential?;
+            let filename = differential.file_name();
+            let filename = filename.to_str().ok_or(anyhow::anyhow!(""))?;
+            let cap = s_t_regex.captures(filename).ok_or(anyhow::anyhow!(""))?;
+            let s_t = (str::parse(&cap["s"])?, str::parse(&cap["t"])?);
+            if s_t > max {
+                max = s_t;
+            }
+        }
+        Ok(max)
     }
-    while res.has_computed_bidegree(s, t + 1) {
-        t += 1;
-    }
-    (s, t)
+    with_result(save_path).unwrap_or((0, 0))
+    // let mut s = 0;
+    // let mut t = 0;
+    // while res.has_computed_bidegree(s + 1, t) {
+    //     s += 1;
+    // }
+    // while res.has_computed_bidegree(s, t + 1) {
+    //     t += 1;
+    // }
+    // (s, t)
 }
 
 #[derive(Clone, Debug)]

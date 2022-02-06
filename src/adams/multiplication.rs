@@ -192,7 +192,6 @@ impl AdamsMultiplication {
         massey_product_data_directory: Option<String>,
     ) -> anyhow::Result<AdamsMultiplication> {
         let save_path = PathBuf::from(&res_file_name);
-        //let mut res_opt: Result<Resolution<CCC>,Error> = error::from_string("could not construct module");
         let res_opt;
         {
             /*
@@ -201,7 +200,7 @@ impl AdamsMultiplication {
                 Ok(file) => Some(file),
             };
             */
-            res_opt = construct("S_2", Some(save_path));
+            res_opt = construct("S_2", Some(save_path.clone()));
         }
         let res_no_arc: Resolution<CCC> = res_opt?;
         let res = Arc::new(res_no_arc);
@@ -231,9 +230,8 @@ impl AdamsMultiplication {
             num_gens.insert((s,t).into(), res.number_of_gens_in_bidegree(s,t));
         }
         */
-        // this is actually pretty bad as a method, but oh well. TODO
-        let (max_s, max_t) = get_max_defined_degree(res.clone());
-        eprintln!("max degree detected: ({}, {})", max_s, max_t);
+        let (max_s, max_t) = get_max_defined_degree(save_path);
+        eprintln!("Max degree detected: ({}, {})", max_s, max_t);
 
         let result = AdamsMultiplication {
             resolution: res,
