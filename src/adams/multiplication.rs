@@ -678,13 +678,13 @@ impl AdamsMultiplication {
     /// and the hashmap of multiplication matrices for multiplication by the adams generator
     pub fn compute_all_multiplications_callback<F>(
         &mut self,
-        _store: bool,
-        _callback: &mut F,
+        store: bool,
+        callback: &mut F,
     ) -> Result<(), String>
     where
         F: FnMut(AdamsGenerator, Bidegree, &HashMap<Bidegree, Matrix>) -> Result<(), String>,
     {
-        self.compute_multiplications(self.max_deg(), self.max_deg())
+        self.compute_multiplications_callback(self.max_deg(), self.max_deg(), store, callback)
     }
 
     /// boolean variable store determines whether or not to store the multiplication matrices
