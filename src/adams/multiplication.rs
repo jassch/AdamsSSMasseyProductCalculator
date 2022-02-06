@@ -193,7 +193,7 @@ impl AdamsMultiplication {
     ) -> anyhow::Result<AdamsMultiplication> {
         let save_path = PathBuf::from(&res_file_name);
 
-        let (max_s, max_t) = get_max_defined_degree(save_path.clone());
+        let (max_s, max_t) = get_max_defined_degree(&save_path);
         eprintln!("Max degree detected: ({}, {})", max_s, max_t);
 
         let res = Arc::new({
