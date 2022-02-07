@@ -14,11 +14,12 @@ once = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2" }
 query = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2" }
 
 anyhow = "1.0.0"
+dashmap = { version = "5.1.0", optional = true }
 rayon = { version = "1.5", optional = true }
 regex = "1.5.4"
 
 [features]
 default = ["concurrent", "zstd"]
-concurrent = ["ext/concurrent"]
+concurrent = ["ext/concurrent", "dashmap"]
 save-res = []
 zstd = ["ext/use-zstd"]

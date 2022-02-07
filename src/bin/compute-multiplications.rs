@@ -2,9 +2,9 @@
 
 use massey::*;
 
-use std::collections::hash_map::HashMap;
-
 use anyhow::Result;
+use dashmap::DashMap;
+
 use fp::matrix::Matrix;
 
 use adams::{AdamsGenerator, AdamsMultiplication, Bidegree};
@@ -12,7 +12,7 @@ use adams::{AdamsGenerator, AdamsMultiplication, Bidegree};
 fn callback(
     lhs: AdamsGenerator,
     _max_rhs_deg_computed: Bidegree,
-    _matrices: &HashMap<Bidegree, Matrix>,
+    _matrices: &DashMap<Bidegree, Matrix>,
 ) -> Result<(), String> {
     println!("Multiplications computed for {}", lhs);
     Ok(())

@@ -1,10 +1,10 @@
 use anyhow;
+use dashmap::DashMap;
 
 use std::cmp::Ordering;
 use std::fs::DirBuilder;
 
 use std::clone::Clone;
-use std::collections::hash_map::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -45,10 +45,10 @@ pub struct AdamsMultiplication {
     /// keeps track of which degrees the multiplication by
     /// a given basis element (s,t,index) is computed for
     //multiplication_range_computed:
-    //    HashMap<AdamsGenerator, Bidegree>,
+    //    DashMap<AdamsGenerator, Bidegree>,
     /// stores the multiplication matrices for each degree
     /// where we could compute the multiplication
-    multiplication_matrices: HashMap<AdamsGenerator, (Bidegree, HashMap<Bidegree, Matrix>)>,
+    multiplication_matrices: DashMap<AdamsGenerator, (Bidegree, DashMap<Bidegree, Matrix>)>,
     /// directory to store computed multiplications
     /// each file will have the multiplication matrices as computed so far
     /// it's not great. We'll have to see how we can make this more efficient
@@ -210,7 +210,7 @@ impl AdamsMultiplication {
             res_data_directory,
             max_s,
             max_t,
-            multiplication_matrices: HashMap::new(),
+            multiplication_matrices: DashMap::new(),
             multiplication_data_directory,
             resolution_homomorphism_data_directory,
             massey_product_data_directory,
@@ -240,7 +240,7 @@ impl AdamsMultiplication {
     /// return nonmutable reference
     pub fn multiplication_matrices(
         &self,
-    ) -> &HashMap<AdamsGenerator, (Bidegree, HashMap<Bidegree, Matrix>)> {
+    ) -> &DashMap<AdamsGenerator, (Bidegree, DashMap<Bidegree, Matrix>)> {
         &self.multiplication_matrices
     }
 
@@ -432,7 +432,7 @@ impl AdamsMultiplication {
     pub fn load_multiplications_for(
         &self,
         _g: AdamsGenerator,
-    ) -> io::Result<Option<(Bidegree, HashMap<Bidegree, Matrix>)>> {
+    ) -> io::Result<Option<(Bidegree, DashMap<Bidegree, Matrix>)>> {
         Ok(None)
         /*
         let path = match self.multiplication_file_path(g) {
@@ -442,7 +442,7 @@ impl AdamsMultiplication {
         if path.exists() {
             let mut file = File::open(path)?;
             let max_deg = Bidegree::load(&mut file, &())?;
-            let hm: HashMap<Bidegree, Matrix> = LoadHM::load(&mut file, &((), self.prime()))?.into();
+            let hm: DashMap<Bidegree, Matrix> = LoadHM::load(&mut file, &((), self.prime()))?.into();
             Ok(Some((max_deg, hm)))
         } else {
             // this is actually fine though
@@ -456,7 +456,7 @@ impl AdamsMultiplication {
         &self,
         _g: AdamsGenerator,
         _computed_range: Bidegree,
-        _matrices: &HashMap<Bidegree, Matrix>,
+        _matrices: &DashMap<Bidegree, Matrix>,
     ) -> io::Result<()> {
         Ok(())
         /*
@@ -472,7 +472,7 @@ impl AdamsMultiplication {
         &self,
         g: AdamsGenerator,
         mult_with_max: Bidegree,
-    ) -> Result<(Bidegree, HashMap<Bidegree, Matrix>), String> {
+    ) -> Result<(Bidegree, DashMap<Bidegree, Matrix>), String> {
         eprintln!("Computing multiplication for {}", g);
         let (s, t, idx) = g.into();
         let g_deg = g.degree();
@@ -502,9 +502,9 @@ impl AdamsMultiplication {
             }
         };
 
-        let (partially_computed, computed_range, mut hm) = match already_computed {
+        let (partially_computed, computed_range, hm) = match already_computed {
             Some((range, hm)) => (true, range, hm),
-            None => (false, (0, 0).into(), HashMap::new()),
+            None => (false, (0, 0).into(), DashMap::new()),
         };
 
         let compute_to = if partially_computed {
@@ -648,7 +648,7 @@ impl AdamsMultiplication {
         callback: &mut F,
     ) -> Result<(), String>
     where
-        F: FnMut(AdamsGenerator, Bidegree, &HashMap<Bidegree, Matrix>) -> Result<(), String>,
+        F: FnMut(AdamsGenerator, Bidegree, &DashMap<Bidegree, Matrix>) -> Result<(), String>,
     {
         self.compute_multiplications_callback(self.max_deg(), self.max_deg(), store, callback)
     }
@@ -664,7 +664,7 @@ impl AdamsMultiplication {
         callback: &mut F,
     ) -> Result<(), String>
     where
-        F: FnMut(AdamsGenerator, Bidegree, &HashMap<Bidegree, Matrix>) -> Result<(), String>,
+        F: FnMut(AdamsGenerator, Bidegree, &DashMap<Bidegree, Matrix>) -> Result<(), String>,
     {
         let lhs_max = lhs_max.meet(self.max_deg()); // don't go out of range
         let rhs_max = rhs_max.meet(self.max_deg()); // don't go out of range
@@ -799,9 +799,10 @@ impl AdamsMultiplication {
                                 continue;
                             }
                             let matrix = match self.multiplication_matrices.get(&(ls, lt, ix).into()) {
-                                Some((_range, hm)) => {
+                                Some(kv) => {
+                                    let hm = &kv.1;
                                     match hm.get(&r) {
-                                        Some(m) => m,
+                                        Some(m) => m.value().clone(),
                                         None => {
                                             return Err(format!("Couldn't get multiplication matrix for gen ({}, {}, {}) in bidegree ({}, {})", ls, lt, ix, rs, rt));
                                         }
@@ -811,7 +812,7 @@ impl AdamsMultiplication {
                                     return Err(format!("Couldn't get multiplication matrices for gen ({}, {}, {})", ls, lt, ix)); // couldn't find an important multiplication matrix
                                 }
                             };
-                            result += /* coeff* */ matrix; // coeff is 1 though, so we're good
+                            result += /* coeff* */ &matrix; // coeff is 1 though, so we're good
                         }
                         Ok(result)
                     }
@@ -960,7 +961,7 @@ impl AdamsMultiplication {
     /// computes the maximum degree through which multiplication with an adams element is defined
     /// expects the adams generator to be valid
     pub fn multiplication_computed_through_degree(&self, gen: AdamsGenerator) -> Option<Bidegree> {
-        self.multiplication_matrices.get(&gen).map(|(res, _)| *res)
+        self.multiplication_matrices.get(&gen).map(|kv| kv.0)
     }
 
     /// returns maximum degree such that all multiplications with generators living in multiplier_deg
@@ -1002,13 +1003,13 @@ impl AdamsMultiplication {
         &self,
         multiplier: &AdamsElement,
         max_degree_kernels: Bidegree,
-    ) -> Result<(Bidegree, HashMap<Bidegree, Subspace>), String> {
+    ) -> Result<(Bidegree, DashMap<Bidegree, Subspace>), String> {
         eprintln!(
             "compute_kernels_left_multiplication({}, {})",
             multiplier, max_degree_kernels
         );
         let deg1 = multiplier.degree();
-        let mut hm = HashMap::new();
+        let hm = DashMap::new();
         let max_mult_with_deg = match self.multiplication_completely_computed_through_degree(deg1) {
             Some(md) => md,
             None => {
@@ -1070,7 +1071,7 @@ impl AdamsMultiplication {
         &self,
         multiplier: &AdamsElement,
         max_degree_kernels: Bidegree,
-    ) -> Result<(Bidegree, HashMap<Bidegree, Subspace>), String> {
+    ) -> Result<(Bidegree, DashMap<Bidegree, Subspace>), String> {
         eprintln!(
             "compute_kernels_right_multiplication({}, {})",
             multiplier, max_degree_kernels
@@ -1089,9 +1090,9 @@ impl AdamsMultiplication {
         &self,
         max_degree_multiplier: Bidegree,
         max_degree_kernels: Bidegree,
-    ) -> Result<HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)>, String> {
-        let mut kernels: HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)> =
-            HashMap::new();
+    ) -> Result<DashMap<AdamsElement, (Bidegree, DashMap<Bidegree, Subspace>)>, String> {
+        let kernels: DashMap<AdamsElement, (Bidegree, DashMap<Bidegree, Subspace>)> =
+            DashMap::new();
         for deg1 in max_degree_multiplier.iter_s_t() {
             let dim1 = match self.num_gens_bidegree(deg1) {
                 Some(n) => n,
@@ -1120,7 +1121,7 @@ impl AdamsMultiplication {
         &self,
         max_degree_multiplier: Bidegree,
         max_degree_kernels: Bidegree,
-    ) -> Result<HashMap<AdamsElement, (Bidegree, HashMap<Bidegree, Subspace>)>, String> {
+    ) -> Result<DashMap<AdamsElement, (Bidegree, DashMap<Bidegree, Subspace>)>, String> {
         // TODO right now we're going to assume multiplication is commutative, since we're working with
         // Adams SS for sphere at p=2.
         self.compute_all_kernels_left_multiplication(max_degree_multiplier, max_degree_kernels)
@@ -1139,7 +1140,7 @@ impl AdamsMultiplication {
     /// takes the kernels for right multiplication by b as an argument
     pub fn compute_massey_prods_for_pair(
         &self,
-        kernels_mul_b: &(Bidegree, HashMap<Bidegree, Subspace>),
+        kernels_mul_b: &(Bidegree, DashMap<Bidegree, Subspace>),
         max_deg_a: Bidegree,
         b: &AdamsElement,
         c: &AdamsElement,
@@ -1326,7 +1327,7 @@ impl AdamsMultiplication {
             let htpy_map = homotopy.homotopy(tot_s);
             let offset_a = self.resolution.module(s1).generator_offset(t1, t1, 0); // where do generators
                                                                                    // start in the basis after all the products and what
-            for vec_a in AllVectorsIterator::new(ker_b_dim_a) {
+            for vec_a in AllVectorsIterator::new(&ker_b_dim_a) {
                 if vec_a.is_zero() {
                     continue; // trivial massey products
                 }
@@ -1414,7 +1415,7 @@ impl AdamsMultiplication {
         let p = self.prime();
         let (max_mass_s, max_mass_t) = max_massey.into();
         // first identify kernels of left multiplication in this range
-        let mut kernels: HashMap<(Bidegree,Bidegree), HashMap<FpVector,Subspace>> = HashMap::new();
+        let mut kernels: DashMap<(Bidegree,Bidegree), DashMap<FpVector,Subspace>> = DashMap::new();
         for s1 in 1..max_mass_s {
             for t1 in s1 as i32..max_mass_t {
                 let dim1 = match self.num_gens(s1, t1) {
@@ -1463,7 +1464,7 @@ impl AdamsMultiplication {
                                     hm.insert(v1.clone(),kernel_lmul_v1.clone());
                                 },
                                 None => {
-                                    let mut new_hm = HashMap::new();
+                                    let mut new_hm = DashMap::new();
                                     new_hm.insert(v1.clone(), kernel_lmul_v1.clone());
                                     kernels.insert(bidegree_pair, new_hm);
                                 }
