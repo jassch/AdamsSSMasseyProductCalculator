@@ -41,7 +41,7 @@ fn main() -> Result<()> {
     )?;
 
     println!("Computing multiplications...");
-    match adams_mult.compute_all_multiplications_callback(true, &mut callback) {
+    match adams_mult.compute_all_multiplications_callback(true, callback) {
         Ok(_) => {}
         Err(err_info) => {
             eprintln!("{}", err_info);

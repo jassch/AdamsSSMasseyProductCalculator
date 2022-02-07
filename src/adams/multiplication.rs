@@ -1,5 +1,6 @@
 use anyhow;
 use dashmap::DashMap;
+use rayon::prelude::*;
 
 use std::cmp::Ordering;
 use std::fs::DirBuilder;
@@ -645,10 +646,12 @@ impl AdamsMultiplication {
     pub fn compute_all_multiplications_callback<F>(
         &mut self,
         store: bool,
-        callback: &mut F,
+        callback: F,
     ) -> Result<(), String>
     where
-        F: FnMut(AdamsGenerator, Bidegree, &DashMap<Bidegree, Matrix>) -> Result<(), String>,
+        F: Fn(AdamsGenerator, Bidegree, &DashMap<Bidegree, Matrix>) -> Result<(), String>
+            + Send
+            + Sync,
     {
         self.compute_multiplications_callback(self.max_deg(), self.max_deg(), store, callback)
     }
@@ -661,33 +664,45 @@ impl AdamsMultiplication {
         lhs_max: Bidegree,
         rhs_max: Bidegree,
         store: bool,
-        callback: &mut F,
+        callback: F,
     ) -> Result<(), String>
     where
-        F: FnMut(AdamsGenerator, Bidegree, &DashMap<Bidegree, Matrix>) -> Result<(), String>,
+        F: Fn(AdamsGenerator, Bidegree, &DashMap<Bidegree, Matrix>) -> Result<(), String>
+            + Send
+            + Sync,
     {
         let lhs_max = lhs_max.meet(self.max_deg()); // don't go out of range
         let rhs_max = rhs_max.meet(self.max_deg()); // don't go out of range
-        for lhs in lhs_max.iter_s_t() {
-            let dim = match self.num_gens_bidegree(lhs) {
-                Some(n) => n,
-                None => {
-                    return Err(format!(
-                        "compute_multiplications: Expected {} to be computed!",
-                        lhs
-                    ))
-                }
-            };
-            for idx in 0..dim {
-                let g = (lhs, idx).into();
-                let mult_data = self.compute_multiplication(g, rhs_max)?;
-                callback(g, mult_data.0, &mult_data.1)?;
-                if store {
-                    self.multiplication_matrices.insert(g, mult_data);
-                }
-            }
-        }
-        Ok(())
+        let f = Arc::new(callback);
+        lhs_max
+            .iter_s_t()
+            .par_bridge()
+            .map(|lhs| {
+                let dim = match self.num_gens_bidegree(lhs) {
+                    Some(n) => n,
+                    None => {
+                        return Err(format!(
+                            "compute_multiplications: Expected {} to be computed!",
+                            lhs
+                        ))
+                    }
+                };
+                (0..dim)
+                    .into_par_iter()
+                    .map(|idx| {
+                        let g = (lhs, idx).into();
+                        let mult_data = self.compute_multiplication(g, rhs_max)?;
+                        f(g, mult_data.0, &mult_data.1)?;
+                        if store {
+                            self.multiplication_matrices.insert(g, mult_data);
+                        }
+                        Result::<(), String>::Ok(())
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(())
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(|_| ())
     }
 
     /// only uses the dimensions, none of the multiplicative structure
