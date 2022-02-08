@@ -6,17 +6,20 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ext = { path = "../sseq/ext" }
-algebra = { path = "../sseq/ext/crates/algebra", default-features = false, features = ["json"] }
-bivec = { path = "../sseq/ext/crates/bivec"}
-#error = { path = "../sseq/ext/crates/error"}
-fp = { path = "../sseq/ext/crates/fp", default-features = false }
-once = { path = "../sseq/ext/crates/once"}
-query = { path = "../sseq/ext/crates/query" }
-#saveload = { path = "../sseq/ext/crates/saveload" }
-#thread-token = { path = "../sseq/ext/crates/thread-token", optional = true }
+ext = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2", default-features = false }
+algebra = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2", default-features = false, features = ["json"] }
+bivec = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2" }
+fp = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2", default-features = false }
+once = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2" }
+query = { git = "https://github.com/spectralsequences/sseq/", tag = "v0.0.2" }
+
 anyhow = "1.0.0"
+dashmap = "5.1.0"
 rayon = { version = "1.5", optional = true }
+regex = "1.5.4"
 
 [features]
+default = ["concurrent", "zstd"]
+concurrent = ["ext/concurrent", "rayon"]
 save-res = []
+zstd = ["ext/use-zstd"]

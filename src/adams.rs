@@ -3,11 +3,6 @@ mod generator;
 mod masseyproduct;
 mod multiplication;
 
-//use saveload::{Load, Save};
-
-use std::io;
-use std::io::{Read, Write};
-
 use std::cmp::{Ordering, PartialOrd};
 
 use std::fmt;
